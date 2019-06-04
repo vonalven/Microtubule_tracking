@@ -47,7 +47,7 @@ public class Window_ZMax implements PlugIn {
         int height = imp.getHeight();
 
         int nOutStacks = (int)(nt-nStackProj);
-        ImagePlus out = IJ.createHyperStack("Correction", width, height, 1, 1, nOutStacks, 16);
+        ImagePlus out = IJ.createHyperStack("ZMaxWindow", width, height, 1, 1, nOutStacks, 16);
         out.getProcessor().resetMinAndMax();
         out.show();
 

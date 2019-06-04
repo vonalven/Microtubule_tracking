@@ -4,13 +4,7 @@ import java.util.ArrayList;
 
 import ij.IJ;
 import ij.ImagePlus;
-import ij.gui.DialogListener;
-import ij.gui.GenericDialog;
-import ij.gui.Line;
-import ij.gui.OvalRoi;
-import ij.gui.Overlay;
-import ij.gui.Roi;
-import ij.gui.TextRoi;
+import ij.gui.*;
 import ij.measure.ResultsTable;
 import ij.plugin.GaussianBlur3D;
 import ij.plugin.PlugIn;
@@ -60,23 +54,31 @@ public class Auto_SandT implements PlugIn {
         int nThresholds = thresholds.length;
         int nSizes = sizes.length;
 
-        int[] spotsEv = new int[nSizes];
 
-        int threshold = 3;
         int velocity = 0;
 
         int randomStart = (int) (Math.random() * (nt-tMean) + 1); // numero da 0 a nt-tMean
-        for(int s = 0; s <nSizes; s++) {
-            double size = sizes[s];
-            double nSpots = 0;
-            for (int t = randomStart; t <= tMean; t++) {
-                imp.setPosition(t);
-                ImagePlus slice = new ImagePlus("", imp.getProcessor());
-                ImagePlus dog = DoG(slice, size);
-                ArrayList<Spot> spots = localMax(dog, t, threshold);
-                nSpots += spots.size()/tMean;
+        for (int th = 0; th<nThresholds;th++) {
+            double threshold = thresholds[th];
+            double[] spotsEv = new double[nSizes];
+            for(int s = 0; s <nSizes; s++) {
+                double size = sizes[s];
+                double nSpots = 0;
+                for (int t = randomStart; t <= randomStart+tMean; t++) {
+                    imp.setPosition(t);
+                    ImagePlus slice = new ImagePlus("", imp.getProcessor());
+                    ImagePlus dog = DoG(slice, size);
+                    ArrayList<Spot> spots = localMax(dog, t, threshold);
+                    nSpots += spots.size()/tMean;
+                }
+                spotsEv[s] = Math.round(nSpots);
             }
-            spotsEv[s] = (int)Math.round(nSpots);
+
+            Plot plot = new Plot("prova th: " + threshold, "size", "counts");
+            plot.addPoints(sizes, spotsEv, Plot.LINE);
+            plot.setColor(Color.red);
+            plot.setLimitsToFit(true);
+            plot.show();
         }
 
 
@@ -255,7 +257,6 @@ public class Auto_SandT implements PlugIn {
         arr[0] = min;
         for(int i = 1; i < nEls-1; i++){
             arr[i] = Math.round((arr[i-1]+step)*1000.0)/1000.0;
-            IJ.log(String.valueOf(arr[i]));
         }
         arr[nEls-1] = max;
 
