@@ -54,11 +54,13 @@ public class Particle_Tracking implements PlugIn, DialogListener {
 			ImagePlus slice = new ImagePlus("", imp.getProcessor());
 			ImagePlus dog = DoG(slice, size);
 			ArrayList<Spot> spots = localMax(dog, t, threshold);
-			for (Spot spot : spots)
+			for (Spot spot : spots) {
 				spot.draw();
+			}
 			ArrayList<Spot> nonMatchedSpots = linkingNN(spots, velocity);
-			for (Spot spot : nonMatchedSpots)
+			for (Spot spot : nonMatchedSpots) {
 				trajectories.add(new Trajectory(spot, trajectories.size()+1));
+			}
 		}
 
 		for (Trajectory trajectory : trajectories) {
@@ -132,19 +134,20 @@ public class Particle_Tracking implements PlugIn, DialogListener {
 			double min = Double.MAX_VALUE;
 			for (Trajectory trajectory : trajectories) {
 				Spot p = trajectory.last();
-				if (p.t == spot.t - 1) 
-				if (p.matched == null) 
-				if (spot.distance(p) < min) {
-					closest = trajectory;
-					min = spot.distance(p);
+				if (p.t == spot.t - 1) {
+					if (p.matched == null) {
+						if (spot.distance(p) < min) {
+							closest = trajectory;
+							min = spot.distance(p);
+						}
+					}
 				}
 			}
-			if (min < velocity) {
+			if (!(min < velocity)) {
+				nonMatchedSpots.add(spot);
+			} else {
 				closest.last().matched = spot;
 				closest.add(spot);
-			}
-			else {
-				nonMatchedSpots.add(spot);
 			}
 		}
 		return nonMatchedSpots;
@@ -157,20 +160,19 @@ public class Particle_Tracking implements PlugIn, DialogListener {
 		
 		public Trajectory(Spot spot, int num) {
 			this.num = num;
-			if (spot.daughterOf == null) {
+			if (spot.daughterOf != null) {
+				add(spot.daughterOf.last());
+				add(spot);
+				color = spot.daughterOf.color;
+			} else {
 				add(spot);
 				color = Color.getHSBColor((float) Math.random(), 1f, 1f);
 				color = new Color(color.getRed(), color.getGreen(), color.getBlue(), 150);
 			}
-			else {
-				add(spot.daughterOf.last());
-				add(spot);
-				color = spot.daughterOf.color;
-			}
 		}
 
 		public Spot last() {
-			return get(size() - 1);
+			return get(this.size() - 1);
 		}
 		
 		public Spot start() {
