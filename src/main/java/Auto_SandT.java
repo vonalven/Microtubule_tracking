@@ -1,11 +1,11 @@
 import java.awt.AWTEvent;
 import java.awt.Color;
 import java.util.ArrayList;
+import java.util.Arrays;
 
 import ij.IJ;
 import ij.ImagePlus;
 import ij.gui.*;
-import ij.measure.ResultsTable;
 import ij.plugin.GaussianBlur3D;
 import ij.plugin.PlugIn;
 import ij.process.Blitter;
@@ -15,7 +15,6 @@ import ij.process.ImageProcessor;
 public class Auto_SandT implements PlugIn {
 
     private int nt;
-    private ArrayList<Trajectory> trajectories = new ArrayList<Trajectory>();
     private Overlay overlay = new Overlay();
 
     public void run(String arg) {
@@ -30,79 +29,70 @@ public class Auto_SandT implements PlugIn {
         }
 
         nt = imp.getStackSize();
-        GenericDialog dlg = new GenericDialog("Auto S and T");
-        dlg.addNumericField("Min Threshold", 0.5, 1);
-        dlg.addNumericField("Max Threshold", 4.5, 1);
-        dlg.addNumericField("Step Threshold", 0.100, 3);
-        dlg.addNumericField("Min Size", 0.5, 1);
-        dlg.addNumericField("Max Size", 4.5, 1);
-        dlg.addNumericField("Step Size", 0.100, 3);
-        dlg.addNumericField("Mean on n stacks", 2, 0);
-        dlg.showDialog();
-        if (dlg.wasCanceled()) return;
-        double minThreshold = dlg.getNextNumber();
-        double maxThreshold = dlg.getNextNumber();
-        double stepThreshold = dlg.getNextNumber();
-        double minSize = dlg.getNextNumber();
-        double maxSize = dlg.getNextNumber();
-        double stepSize = dlg.getNextNumber();
-        double tMean = dlg.getNextNumber();
 
-        double[] thresholds = range(minThreshold,maxThreshold,stepThreshold);
+        double veryMin = 0.5;
+        double minIntensity = Math.max(imp.getProcessor().getMin(),veryMin);
+        double autoIntensity = imp.getProcessor().getAutoThreshold();
+
+        if(minIntensity>autoIntensity){
+            double tmp = autoIntensity;
+            autoIntensity = minIntensity;
+            minIntensity = tmp;
+        }
+
+        IJ.log("auto: " + autoIntensity);
+        IJ.log("min: " + minIntensity);
+
+        double threshold = autoIntensity;//(autoIntensity+minIntensity)/2;
+
+        //TODO: ask to the user with a dialog (see old version)
+        double minSize = 0.2;
+        double maxSize = 4.5;
+        double stepSize = 0.1;
+        double tMean = 4;
+
         double sizes[] = range(minSize,maxSize,stepSize);
 
-        int nThresholds = thresholds.length;
         int nSizes = sizes.length;
 
 
         int velocity = 0;
 
         int randomStart = (int) (Math.random() * (nt-tMean) + 1); // numero da 0 a nt-tMean
-        for (int th = 0; th<nThresholds;th++) {
-            double threshold = thresholds[th];
-            double[] spotsEv = new double[nSizes];
-            for(int s = 0; s <nSizes; s++) {
-                double size = sizes[s];
-                double nSpots = 0;
-                for (int t = randomStart; t <= randomStart+tMean; t++) {
-                    imp.setPosition(t);
-                    ImagePlus slice = new ImagePlus("", imp.getProcessor());
-                    ImagePlus dog = DoG(slice, size);
-                    ArrayList<Spot> spots = localMax(dog, t, threshold);
-                    nSpots += spots.size()/tMean;
-                }
-                spotsEv[s] = Math.round(nSpots);
-            }
 
-            Plot plot = new Plot("prova th: " + threshold, "size", "counts");
-            plot.addPoints(sizes, spotsEv, Plot.LINE);
-            plot.setColor(Color.red);
-            plot.setLimitsToFit(true);
-            plot.show();
+        double[] spotsEv = new double[nSizes];
+        for(int s = 0; s <nSizes; s++) {
+            double size = sizes[s];
+            double nSpots = 0;
+            for (int t = randomStart; t < randomStart+tMean; t++) {
+                imp.setPosition(t);
+                ImagePlus slice = new ImagePlus("", imp.getProcessor());
+                ImagePlus dog = DoG(slice, size);
+                ArrayList<Spot> spots = localMax(dog, t, threshold);
+                nSpots += spots.size()/tMean;
+            }
+            spotsEv[s] = Math.round(nSpots);
         }
+
+        Plot plot = new Plot("prova th: " + threshold, "size", "counts");
+        plot.addPoints(sizes, spotsEv, Plot.LINE);
+        plot.setColor(Color.red);
+
+        double[] deriv    = derivativeAbsolute(spotsEv);
+        double[] newSizes = new double[deriv.length];
+        for(int fac = 0; fac<deriv.length;fac++){
+            newSizes[fac] = sizes[fac+2];
+        }
+
+        plot.addPoints(newSizes,deriv,Plot.BOX);
+        plot.setColor(Color.green);
+        plot.setLimitsToFit(true);
+        plot.show();
 
 
         if(true){
             return;
         }
-
-
-
-        for (Trajectory trajectory : trajectories) {
-            trajectory.draw();
-        }
-        imp.setOverlay(overlay);
-
-        ResultsTable table = new ResultsTable();
-        for (Trajectory trajectory : trajectories) {
-            table.incrementCounter();
-            table.addValue("#", trajectory.num);
-            table.addValue("length", trajectory.size());
-            table.addValue("range", "(" + trajectory.start().t + " ... " + trajectory.last().t + ")");
-            table.addValue("last position", "(" + trajectory.last().x + "," + trajectory.last().y + ")");
-        }
-        table.show("Trajectories");
-
 
     }
 
@@ -152,71 +142,6 @@ public class Auto_SandT implements PlugIn {
         return list;
     }
 
-    public ArrayList<Spot> linkingNN(ArrayList<Spot> spots, double velocity) {
-        ArrayList<Spot> nonMatchedSpots = new ArrayList<Spot>();
-        for (Spot spot : spots) {
-            Trajectory closest = null;
-            double min = Double.MAX_VALUE;
-            for (Trajectory trajectory : trajectories) {
-                Spot p = trajectory.last();
-                if (p.t == spot.t - 1)
-                    if (p.matched == null)
-                        if (spot.distance(p) < min) {
-                            closest = trajectory;
-                            min = spot.distance(p);
-                        }
-            }
-            if (min < velocity) {
-                closest.last().matched = spot;
-                closest.add(spot);
-            }
-            else {
-                nonMatchedSpots.add(spot);
-            }
-        }
-        return nonMatchedSpots;
-    }
-
-    public class Trajectory extends ArrayList<Spot> {
-
-        private Color color;
-        private int num;
-
-        public Trajectory(Spot spot, int num) {
-            this.num = num;
-            if (spot.daughterOf == null) {
-                add(spot);
-                color = Color.getHSBColor((float) Math.random(), 1f, 1f);
-                color = new Color(color.getRed(), color.getGreen(), color.getBlue(), 150);
-            }
-            else {
-                add(spot.daughterOf.last());
-                add(spot);
-                color = spot.daughterOf.color;
-            }
-        }
-
-        public Spot last() {
-            return get(size() - 1);
-        }
-
-        public Spot start() {
-            return get(0);
-        }
-
-        public void draw() {
-            //overlay.add(new TextRoi(last().x, last().y, ""+num));
-            for (int i = 0; i < size() - 1; i++) {
-                Spot a = get(i);
-                Spot b = get(i + 1);
-                Line line = new Line(a.x + 0.5, a.y + 0.5, b.x + 0.5, b.y + 0.5);
-                line.setStrokeColor(color);
-                line.setStrokeWidth(1);
-                overlay.add(line);
-            }
-        }
-    }
-
     public class Spot {
 
         public int x;
@@ -224,7 +149,6 @@ public class Auto_SandT implements PlugIn {
         public int t;
         public double value;
         public Spot matched;
-        public Trajectory daughterOf;
 
         public Spot(int x, int y, int t, double value) {
             this.x = x;
@@ -232,23 +156,26 @@ public class Auto_SandT implements PlugIn {
             this.t = t;
             this.value = value;
         }
+    }
 
-        public double distance(Spot spot) {
-            double dx = x - spot.x;
-            double dy = y - spot.y;
-            return Math.sqrt(dx * dx + dy * dy);
-        }
+    private double[] derivative(double[] original){
+        return derivative(original,2,false);
+    }
 
-        public void draw() {
-            double xp = x + 0.5;
-            double yp = y + 0.5;
-            int radius = 5;
-            Roi roi = new OvalRoi(xp - radius, yp - radius, 2 * radius, 2 * radius);
-            roi.setPosition(t);
-            roi.setStrokeColor(Color.WHITE);
-            roi.setStrokeWidth(1);
-            overlay.add(roi);
+    private double[] derivativeAbsolute(double[] original){
+        return derivative(original,2,true);
+    }
+
+    private double[] derivative(double[] original,int precision, boolean abs){
+        int l = original.length - precision*2;
+        double[] d = new double[l];
+        for(int x=precision;x<l-precision;x++){
+            d[x-precision] = (original[x+precision] - original[x-precision]) / (2*precision);
+            if(abs){
+                d[x-precision] = Math.abs(d[x-precision]);
+            }
         }
+        return d;
     }
 
     private double[] range(double min, double max, double step){
@@ -262,4 +189,5 @@ public class Auto_SandT implements PlugIn {
 
         return arr;
     }
+
 }

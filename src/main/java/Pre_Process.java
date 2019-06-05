@@ -21,12 +21,13 @@ public class Pre_Process implements PlugIn {
         ij.IJ.run("Subtract Background...", "rolling=20 sliding stack");
         ij.IJ.run("Enhance Contrast", "saturated=0.35");
         ij.IJ.run("Window ZMax", "n=3");
-        //selectWindow("pre_process duplicate");
-        //close window
-        //selectWindow("ZMaxWindow");
         ij.IJ.run("Enhance Contrast", "saturated=0.35");
+        ij.IJ.selectWindow("pre_process");
+        ij.IJ.run("Close");
+        ij.IJ.selectWindow("ZMaxWindow"); //TODO: rename this window
         ij.IJ.run("Sigma Filter Plus", "radius=1 use=2 minimum=0.2 outlier stack");
         ij.IJ.run("Subtract Background...", "rolling=50 sliding stack");
+        ij.IJ.run("Enhance Contrast", "saturated=0.35");
 
     }
 }
