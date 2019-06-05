@@ -20,7 +20,7 @@ public class Pre_Process implements PlugIn {
         ij.IJ.run("Duplicate...", "title=pre_process duplicate");
         ij.IJ.run("Subtract Background...", "rolling=20 sliding stack");
         ij.IJ.run("Enhance Contrast", "saturated=0.35");
-        ij.IJ.run("Window ZMax", "n=3");
+        ij.IJ.run("Window ZMax", "n=1");
         ij.IJ.run("Enhance Contrast", "saturated=0.35");
         ij.IJ.selectWindow("pre_process");
         ij.IJ.run("Close");

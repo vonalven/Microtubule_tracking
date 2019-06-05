@@ -40,8 +40,7 @@ public class Auto_SandT implements PlugIn {
             minIntensity = tmp;
         }
 
-        IJ.log("auto: " + autoIntensity);
-        IJ.log("min: " + minIntensity);
+        IJ.log(String.valueOf(autoIntensity));
 
         double threshold = autoIntensity;//(autoIntensity+minIntensity)/2;
 
@@ -76,18 +75,24 @@ public class Auto_SandT implements PlugIn {
 
         Plot plot = new Plot("prova th: " + threshold, "size", "counts");
         plot.addPoints(sizes, spotsEv, Plot.LINE);
-        plot.setColor(Color.red);
+        plot.setColor(Color.green);
 
-        double[] deriv    = derivativeAbsolute(spotsEv);
+        double[] deriv    = derivative(spotsEv,5,true);
+        //normalize:
+        deriv = normalize(deriv);
         double[] newSizes = new double[deriv.length];
         for(int fac = 0; fac<deriv.length;fac++){
             newSizes[fac] = sizes[fac+2];
         }
 
         plot.addPoints(newSizes,deriv,Plot.BOX);
-        plot.setColor(Color.green);
         plot.setLimitsToFit(true);
         plot.show();
+
+
+        int[] bornes = stableMoovingMean(deriv);
+        double bestSize = (sizes[bornes[0]]-sizes[bornes[1]])/2;
+        IJ.log("best size: "+bestSize);
 
 
         if(true){
@@ -158,12 +163,21 @@ public class Auto_SandT implements PlugIn {
         }
     }
 
+    private double[] derivative2(double[] original,int precision,boolean abs){
+        double[] d1 = derivative(original,precision,false);
+        return derivative(d1,precision,abs);
+    }
+
     private double[] derivative(double[] original){
         return derivative(original,2,false);
     }
 
     private double[] derivativeAbsolute(double[] original){
         return derivative(original,2,true);
+    }
+
+    private double[] derivativeAbsolute(double[] original,int precision){
+        return derivative(original,precision,true);
     }
 
     private double[] derivative(double[] original,int precision, boolean abs){
@@ -178,6 +192,15 @@ public class Auto_SandT implements PlugIn {
         return d;
     }
 
+    private double[] normalize(double[] original){
+        double max = getMax(original);
+        double[] outArray = new double[original.length];
+        for (int i = 0; i < original.length; i++) {
+            outArray[i] = original[i]/max;
+        }
+        return outArray;
+    }
+
     private double[] range(double min, double max, double step){
         int nEls = (int)(Math.ceil((max-min)/step))+1;
         double arr[] = new double[nEls];
@@ -188,6 +211,59 @@ public class Auto_SandT implements PlugIn {
         arr[nEls-1] = max;
 
         return arr;
+    }
+
+    // Method for getting the maximum value
+    public static double getMax(double[] inputArray){
+        double maxValue = inputArray[0];
+        for(int i=1;i < inputArray.length;i++){
+            if(inputArray[i] > maxValue){
+                maxValue = inputArray[i];
+            }
+        }
+        return maxValue;
+    }
+
+    private int[] stableMoovingMean(double[] inputArray){
+        return stableMoovingMean(inputArray,0.2,10,20);
+    }
+
+    private int[] stableMoovingMean(double[] inputArray, double threshold, int window, int limit){
+        int[] minAndMax = new int[2];
+        double mean = 0;
+        double lastMean = 0;
+        boolean checkpoint = false;
+        for (int i = 0; i < (inputArray.length-window); i++) {
+            for (int j = 0; j < window; j++) {
+                mean += inputArray[i+j];
+            }
+            mean = mean/window;
+            if(!checkpoint && Math.abs(mean-lastMean)<threshold){
+                minAndMax[0] = i;
+                checkpoint = true;
+                continue;
+            }
+            if(checkpoint && Math.abs(mean-lastMean)>threshold){
+                minAndMax[1] = i;
+                break;
+            }
+            if(i>limit){
+                minAndMax[1] = i;
+                break;
+            }
+        }
+        return minAndMax;
+    }
+
+    // Method for getting the minimum value
+    public static double getMin(double[] inputArray){
+        double minValue = inputArray[0];
+        for(int i=1;i<inputArray.length;i++){
+            if(inputArray[i] < minValue){
+                minValue = inputArray[i];
+            }
+        }
+        return minValue;
     }
 
 }
