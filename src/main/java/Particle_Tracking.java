@@ -92,12 +92,12 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         dlg2.addDialogListener(this);
         dlg2.showDialog();
         if (dlg.wasCanceled()) return;
-        double max_gap = dlg.getNextNumber();
-        double min_life = dlg.getNextNumber();
-        double fw_angle = dlg.getNextNumber();
-        double bkw_angle = dlg.getNextNumber();
-        double transversal_angle = dlg.getNextNumber();
-        double V_shrinkage = dlg.getNextNumber();
+        double max_gap = dlg2.getNextNumber();
+        double min_life = dlg2.getNextNumber();
+        double fw_angle = dlg2.getNextNumber();
+        double bkw_angle = dlg2.getNextNumber();
+        double transversal_angle = dlg2.getNextNumber();
+        double V_shrinkage = dlg2.getNextNumber();
         ArrayList<Double> velocity_all = new ArrayList<>();
 
         for (Trajectory trajectory : trajectories) {
@@ -111,8 +111,9 @@ public class Particle_Tracking implements PlugIn, DialogListener {
 
         double V_max = Percentile(velocity_all, 0.95);
         double V_med = Median(velocity_all);
-        double test_angle_fwd;
-        double test_angle_bkw;
+        double shift_angle_fw;
+        double shift_angle_bkw;
+        double bend_angle;
         double radius_max_fw;
         double radius_max_bkw;
         double delta_t_gap;
@@ -120,11 +121,12 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         Trajectory best_connected;
         boolean merge_event = true;
 
-        // TODO: repeat until nb. of trajectories (after linking) doesn't change
-        while(merge_event) {
+        // repeat until nb. of trajectories (after linking) doesn't change
+        while (merge_event) {
 
             merge_event = false;
 
+            outerloop:
             for (Trajectory trajectory : trajectories) {
                 if (trajectory.size() < min_life) {
                     trajectories.remove(trajectory);
@@ -148,8 +150,10 @@ public class Particle_Tracking implements PlugIn, DialogListener {
 
                         if (delta_t_gap < max_gap) {
 
-                            test_angle_fwd = getTestAngle(trajectory, traj, true);
-                            test_angle_bkw = getTestAngle(trajectory, traj, false);
+                            shift_angle_fw = shiftAngle(trajectory, traj, true);
+                            shift_angle_bkw = shiftAngle(trajectory, traj, false);
+
+                            bend_angle = bendAngle(trajectory, traj);
 
                             radius_max_fw = V_max * Math.min(delta_t_gap, Math.sqrt(max_gap));
                             radius_max_bkw = Math.min(V_shrinkage * V_max * delta_t_gap, V_med * max_gap);
@@ -157,10 +161,10 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                             // TODO: USE OR NOT ABS ??
                             dist_test = trajectory.last().distance((traj.start()));
 
-                            if (test_angle_fwd <= fw_angle && dist_test <= radius_max_fw) {
+                            if (shift_angle_fw <= fw_angle && dist_test <= radius_max_fw && bend_angle <= transversal_angle) {
                                 candidates_fw.add(traj);
                             }
-                            if (test_angle_bkw <= bkw_angle && dist_test <= radius_max_bkw) {
+                            if (shift_angle_bkw <= bkw_angle && dist_test <= radius_max_bkw && bend_angle <= transversal_angle) {
                                 candidates_bkw.add(traj);
                             }
                         }
@@ -171,6 +175,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                         trajectory.addAll(best_connected);
                         trajectories.remove(best_connected);
                         merge_event = true;
+                        break outerloop;
                     } else {
                         trajectory.isAlone = true;
                     }
@@ -179,6 +184,11 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         }
 
 
+        for (Trajectory trajectory : trajectories) {
+            trajectory.draw();
+        }
+        ImagePlus imp2 = imp.duplicate();
+        imp2.setOverlay(overlay);
     }
 
     public double Percentile(ArrayList<Double> ll, double percentile) {
@@ -204,10 +214,10 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         Trajectory best_cand_fw = null;
         Trajectory best_cand_bkw = null;
 
-        if(!candidates_fw.isEmpty()) {
+        if (!candidates_fw.isEmpty()) {
             for (Trajectory cand_fw : candidates_fw) {
-                lateral_shift_angle = getTestAngle(ref, cand_fw, true);
-                bending_angle = bendingAngle(ref, cand_fw);
+                lateral_shift_angle = shiftAngle(ref, cand_fw, true);
+                bending_angle = bendAngle(ref, cand_fw);
                 cost_tmp_fw = Math.abs(Math.cos(bending_angle)) - Math.abs(Math.cos(lateral_shift_angle));
                 if (cost_tmp_fw < min_cost_fw) {
                     min_cost_fw = cost_tmp_fw;
@@ -216,10 +226,10 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             }
         }
 
-        if(!candidates_bkw.isEmpty()) {
+        if (!candidates_bkw.isEmpty()) {
             for (Trajectory cand_bkw : candidates_bkw) {
-                lateral_shift_angle = getTestAngle(ref, cand_bkw, false);
-                bending_angle = bendingAngle(ref, cand_bkw);
+                lateral_shift_angle = shiftAngle(ref, cand_bkw, false);
+                bending_angle = bendAngle(ref, cand_bkw);
                 cost_tmp_bkw = Math.abs(Math.cos(bending_angle)) - Math.abs(Math.cos(lateral_shift_angle));
                 if (cost_tmp_bkw < min_cost_bkw) {
                     min_cost_bkw = cost_tmp_bkw;
@@ -228,14 +238,14 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             }
         }
 
-        if(min_cost_fw < min_cost_bkw){
+        if (min_cost_fw < min_cost_bkw) {
             return best_cand_fw;
         } else {
             return best_cand_bkw;
         }
     }
 
-    public double getTestAngle(Trajectory ref, Trajectory candidate, boolean isForward) {
+    public double shiftAngle(Trajectory ref, Trajectory candidate, boolean isForward) {
         double[] v1 = new double[2];
         double[] v2 = new double[2];
         v1[1] = candidate.start().x - ref.last().x;
@@ -259,7 +269,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         return test_angle;
     }
 
-    public double bendingAngle(Trajectory ref, Trajectory candidate) {
+    public double bendAngle(Trajectory ref, Trajectory candidate) {
 
         double[] v1 = new double[2];
         double[] v2 = new double[2];
