@@ -98,6 +98,8 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         double V_shrinkage = dlg2.getNextNumber();
         ArrayList<Double> velocity_all = new ArrayList<>();
 
+        IJ.log(Integer.toString(222222));
+
         for (Trajectory trajectory : trajectories) {
             for (int i = 0; i < trajectory.size(); i++) {
                 if (i < trajectory.size() - 1) {
@@ -125,7 +127,12 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             merge_event = false;
 
             outerloop:
-            for (Trajectory trajectory : trajectories) {
+            //for (Trajectory trajectory : trajectories) {
+            //while(trajectories.hasNext()){
+            for(int i = 0 ; i<trajectories.size(); i++){
+                IJ.log(Integer.toString(i));
+                Trajectory trajectory = trajectories.get(i);
+
                 if (trajectory.size() < min_life) {
                     trajectories.remove(trajectory);
                     continue;
@@ -138,7 +145,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                 trajectory.buildRegression();
 
                 ArrayList<Trajectory> candidates_fw = new ArrayList<>();
-                ArrayList<Trajectory> candidates_bkw = new ArrayList<>();
+                ArrayList<Trajectory> candidates_bkw = new ArrayList<Trajectory>();
 
                 for (Trajectory traj : trajectories) {
                     if (traj != trajectory && traj.size() >= min_life) {
@@ -169,6 +176,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                     }
 
                     if (!candidates_bkw.isEmpty() || !candidates_fw.isEmpty()) {
+                        IJ.log("HELLOOOOOOO");
                         best_connected = bestCandidate(trajectory, candidates_fw, candidates_bkw, fw_angle, bkw_angle, transversal_angle);
                         trajectory.addAll(best_connected);
                         trajectories.remove(best_connected);
@@ -182,10 +190,13 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         }
 
 
+        ImagePlus imp2 = new ImagePlus();
+        imp2 = imp.duplicate();
+        imp2.show();
+        //overlay = new Overlay();
         for (Trajectory trajectory : trajectories) {
             trajectory.draw();
         }
-        ImagePlus imp2 = imp.duplicate();
         imp2.setOverlay(overlay);
     }
 
@@ -390,7 +401,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         }
 
         public void draw() {
-            overlay.add(new TextRoi(last().x, last().y, "" + num));
+            // overlay.add(new TextRoi(last().x, last().y, "" + num));
             for (int i = 0; i < size() - 1; i++) {
                 Spot a = get(i);
                 Spot b = get(i + 1);
