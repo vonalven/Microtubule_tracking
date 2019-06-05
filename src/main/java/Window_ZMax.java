@@ -1,23 +1,7 @@
-import java.awt.AWTEvent;
-import java.awt.Color;
-import java.util.ArrayList;
-import java.util.Arrays;
-
 import ij.IJ;
 import ij.ImagePlus;
-import ij.ImageStack;
-import ij.gui.DialogListener;
 import ij.gui.GenericDialog;
-import ij.gui.Line;
-import ij.gui.OvalRoi;
-import ij.gui.Overlay;
-import ij.gui.Roi;
-import ij.gui.TextRoi;
-import ij.measure.ResultsTable;
-import ij.plugin.GaussianBlur3D;
 import ij.plugin.PlugIn;
-import ij.process.Blitter;
-import ij.process.ImageConverter;
 import ij.process.ImageProcessor;
 
 public class Window_ZMax implements PlugIn {
@@ -53,7 +37,7 @@ public class Window_ZMax implements PlugIn {
 
         for (int t = 1; t <= nOutStacks; t++) {
 
-            double maxIntensities[][] = new double[width][height]; // 0 by default
+            double[][] maxIntensities = new double[width][height]; // 0 by default
 
             for (int tt = 0; tt<nStackProj; tt++){
                 imp.setPosition(t+tt);
@@ -74,10 +58,6 @@ public class Window_ZMax implements PlugIn {
                     op.putPixelValue(x, y, v);
                 }
             }
-        }
-
-        if(true){
-            return;
         }
 
     }
