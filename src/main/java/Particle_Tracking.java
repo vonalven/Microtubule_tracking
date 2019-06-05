@@ -18,8 +18,6 @@ import ij.plugin.PlugIn;
 import ij.process.Blitter;
 import ij.process.ImageConverter;
 import ij.process.ImageProcessor;
-import javafx.util.Pair;
-import org.apache.commons.math3.stat.descriptive.rank.Percentile;
 import org.apache.commons.math3.stat.regression.SimpleRegression;
 
 public class Particle_Tracking implements PlugIn, DialogListener {
@@ -191,18 +189,19 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         imp2.setOverlay(overlay);
     }
 
-    public double Percentile(ArrayList<Double> ll, double percentile) {
+    private double Percentile(ArrayList<Double> ll, double percentile) {
         Collections.sort(ll);
         int index_percentile = (int) (Math.ceil(ll.size() * percentile));
         return ll.get(index_percentile);
     }
 
-    public double Median(ArrayList<Double> ll) {
+    private double Median(ArrayList<Double> ll) {
         int index_median = (int) (Math.ceil(ll.size() * 0.5));
         return ll.get(index_median);
     }
 
-    public Trajectory bestCandidate(Trajectory ref,
+    // TODO: last 3 parameters never used
+    private Trajectory bestCandidate(Trajectory ref,
                                     ArrayList<Trajectory> candidates_fw, ArrayList<Trajectory> candidates_bkw,
                                     double max_angle_fw, double max_angle_bkw, double max_angle_lateral) {
         double bending_angle;
@@ -245,49 +244,48 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         }
     }
 
-    public double shiftAngle(Trajectory ref, Trajectory candidate, boolean isForward) {
+    private double shiftAngle(Trajectory ref, Trajectory candidate, boolean isForward) {
         double[] v1 = new double[2];
         double[] v2 = new double[2];
-        v1[1] = candidate.start().x - ref.last().x;
-        v1[2] = candidate.start().y - ref.regression.predict(ref.last().x);
+        v1[0] = candidate.start().x - ref.last().x;
+        v1[1] = candidate.start().y - ref.regression.predict(ref.last().x);
         if (isForward) {
-            v2[1] = 10;
-            v2[2] = ref.regression.predict(ref.last().x + 10) - ref.last().y;
+            v2[0] = 10;
+            v2[1] = ref.regression.predict(ref.last().x + 10) - ref.last().y;
         } else {
-            v2[1] = -10;
-            v2[2] = ref.regression.predict(ref.last().x - 10) - ref.last().y;
+            v2[0] = -10;
+            v2[1] = ref.regression.predict(ref.last().x - 10) - ref.last().y;
         }
 
-        double norm1 = Math.sqrt(v1[1] * v1[1] + v1[2] * v1[2]);
-        double norm2 = Math.sqrt(v2[1] * v2[1] + v2[2] * v2[2]);
+        double norm1 = Math.sqrt(v1[0] * v1[0] + v1[1] * v1[1]);
+        double norm2 = Math.sqrt(v2[0] * v2[0] + v2[1] * v2[1]);
+        v1[0] /= norm1;
         v1[1] /= norm1;
-        v1[2] /= norm1;
+        v2[0] /= norm2;
         v2[1] /= norm2;
-        v2[2] /= norm2;
-        double test_angle = Math.abs(Math.toDegrees(Math.acos(v1[1] * v2[1] + v1[2] * v2[2])));
 
-        return test_angle;
+        return Math.abs(Math.toDegrees(Math.acos(v1[0] * v2[0] + v1[1] * v2[1])));
+
     }
 
-    public double bendAngle(Trajectory ref, Trajectory candidate) {
+    private double bendAngle(Trajectory ref, Trajectory candidate) {
 
         double[] v1 = new double[2];
         double[] v2 = new double[2];
-        v1[1] = ref.start().x - ref.last().x;
-        v1[2] = ref.regression.predict(ref.start().x) - ref.regression.predict(ref.last().x);
+        v1[0] = ref.start().x - ref.last().x;
+        v1[1] = ref.regression.predict(ref.start().x) - ref.regression.predict(ref.last().x);
 
-        v2[1] = candidate.start().x - candidate.last().x;
-        v2[2] = candidate.regression.predict(ref.start().x) - candidate.regression.predict(ref.last().x);
+        v2[0] = candidate.start().x - candidate.last().x;
+        v2[1] = candidate.regression.predict(ref.start().x) - candidate.regression.predict(ref.last().x);
 
-        double norm1 = Math.sqrt(v1[1] * v1[1] + v1[2] * v1[2]);
-        double norm2 = Math.sqrt(v2[1] * v2[1] + v2[2] * v2[2]);
+        double norm1 = Math.sqrt(v1[0] * v1[0] + v1[1] * v1[1]);
+        double norm2 = Math.sqrt(v2[0] * v2[0] + v2[1] * v2[1]);
+        v1[0] /= norm1;
         v1[1] /= norm1;
-        v1[2] /= norm1;
+        v2[0] /= norm2;
         v2[1] /= norm2;
-        v2[2] /= norm2;
-        double bending_angle = Math.abs(Math.toDegrees(Math.acos(v1[1] * v2[1] + v1[2] * v2[2])));
 
-        return bending_angle;
+        return Math.abs(Math.toDegrees(Math.acos(v1[0] * v2[0] + v1[1] * v2[1])));
 
     }
 
