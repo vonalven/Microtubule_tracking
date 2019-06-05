@@ -390,7 +390,6 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         }
 
         public void draw() {
-            overlay.add(new TextRoi(last().x, last().y, "" + num));
             for (int i = 0; i < size() - 1; i++) {
                 Spot a = get(i);
                 Spot b = get(i + 1);
