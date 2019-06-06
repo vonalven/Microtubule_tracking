@@ -160,28 +160,16 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         double dist_test;
         Trajectory best_connected;
         boolean merge_event = true;
+        int lastSize = trajectories.size();
 
         // repeat until nb. of trajectories (after linking) doesn't change
         while (merge_event) {
-
-            merge_event = false;
 
             outerloop:
             for (int i = 0; i < trajectories.size(); i++) {
                 Trajectory trajectory = trajectories.get(i);
 
-                IJ.log(String.valueOf(i));
-
-                if((trajectory.num == 85 || trajectory.num == 117)){
-                    //IJ.log("bend: " + bend_corrected + " dist: "+ dist_test + " radius: " + radius_max_fw);
-                    IJ.log("OK... ");
-                }
-
                 if (trajectory.isAlone) {
-                    if((trajectory.num == 85 || trajectory.num == 117)){
-                        //IJ.log("bend: " + bend_corrected + " dist: "+ dist_test + " radius: " + radius_max_fw);
-                        IJ.log("ALONE");
-                    }
                     continue;
                 }
 
@@ -189,35 +177,16 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                 trajectory.buildRegression();
 
                 if(trajectory.length_lin < 2){
-                    if((trajectory.num == 85 || trajectory.num == 117)){
-                        //IJ.log("bend: " + bend_corrected + " dist: "+ dist_test + " radius: " + radius_max_fw);
-                        IJ.log("RIMOSSO 1");
-                    }
                     trajectories.remove(trajectory);
                     i--;
                     continue;
                 }
 
-                if(trajectory.length_curve > trajectory.length_lin*1.5){
-                    if((trajectory.num == 85 || trajectory.num == 117)){
-                        //IJ.log("bend: " + bend_corrected + " dist: "+ dist_test + " radius: " + radius_max_fw);
-                        IJ.log("RIMOSSO 2 ");
-                    }
-                    trajectories.remove(trajectory);
-                    i--;
-                    continue;
-                }
 
                 ArrayList<Trajectory> candidates_fw = new ArrayList<>();
 
                 for (Trajectory traj : trajectories) {
                     if (traj != trajectory) {
-
-
-                        if((traj.num == 85 || traj.num == 117) && (trajectory.num == 85 || trajectory.num == 117)){
-                            //IJ.log("bend: " + bend_corrected + " dist: "+ dist_test + " radius: " + radius_max_fw);
-                            IJ.log("SUKA");
-                        }
 
                         traj.buildRegression();
                         delta_t_gap = Math.abs(trajectory.last().t - traj.start().t);
@@ -244,13 +213,17 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                     if(best_connected!=null) {
                         trajectory.addAll(best_connected);
                         trajectories.remove(best_connected);
-                        merge_event = true;
+                        i--;
                     }
-                    break outerloop;
                 } else {
                     trajectory.isAlone = true;
                 }
             }
+
+            if(lastSize == trajectories.size()){
+                merge_event = false;
+            }
+            lastSize = trajectories.size();
         }
 
         for (int i = 0; i < trajectories.size(); i++) {
@@ -267,8 +240,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         imp2.show();
         //overlay = new Overlay();
         for (Trajectory trajectory : trajectories) {
-            trajectory.drawRegression();
-            trajectory.drawPoints();
+            trajectory.draw();
         }
         imp2.setOverlay(overlay);
     }
@@ -459,7 +431,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             } else {
                 add(spot);
                 color = Color.getHSBColor((float) Math.random(), 1f, 1f);
-                color = new Color(color.getRed(), color.getGreen(), color.getBlue(), 150);
+                color = new Color(color.getRed(), color.getGreen(), color.getBlue(), 60);
             }
         }
 
