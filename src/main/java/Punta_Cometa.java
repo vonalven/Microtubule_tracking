@@ -63,7 +63,7 @@ public class Punta_Cometa implements PlugIn {
                     meanAfter = getMean(getNeighbors(ip2,x,y,wsize));
 
                     if(Math.abs(meanAfter-meanBefore)<threshold){
-                        op.putPixelValue(x, y, 0);
+                        op.putPixelValue(x, y, Math.round(meanAfter-meanBefore)/2);
                     }else{
                         op.putPixelValue(x, y, ip1.getPixelValue(x,y));
                     }
