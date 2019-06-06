@@ -2,6 +2,7 @@ import java.awt.AWTEvent;
 import java.awt.Color;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 
 import ij.IJ;
 import ij.ImagePlus;
@@ -58,6 +59,65 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                 trajectories.add(new Trajectory(spot, trajectories.size() + 1));
             }
         }
+
+
+        ArrayList<Trajectory> newTrajectories = new ArrayList<>();
+
+        for (int idTraj = 0; idTraj < trajectories.size(); idTraj++) {
+            Trajectory trajectory = trajectories.get(idTraj);
+            double[] intensityDistribution= trajectory.getIntensityDistribution();
+            for (int i = 0; i < intensityDistribution.length; i++) {
+                double thresholdIntensityDistributionFactor = 2;
+                if(intensityDistribution[i] > thresholdIntensityDistributionFactor*trajectory.meanIntensity){
+                    intensityDistribution[i] = -1;
+                }
+            }
+
+            int startPeakIndex = 0;
+            int endPeakIndex   = 0;
+            int startSubTrajIndex = 0;
+            boolean continuity = false;
+            boolean hasPeak = false;
+
+            for (int i = 0; i < intensityDistribution.length; i++) {
+                if(intensityDistribution[i] == -1 && !continuity){
+                    startPeakIndex = i;
+                    endPeakIndex   = i;
+                    continuity = true;
+                    continue;
+                }
+                if(intensityDistribution[i] == -1 && continuity){
+                    endPeakIndex = i;
+                    continue;
+                }
+
+                if(continuity && !(startPeakIndex == endPeakIndex)) {
+                    if(startPeakIndex!=0) {
+                        Trajectory tmpTraj = trajectory.getSubset(startSubTrajIndex, startPeakIndex); //TODO: verify
+                        newTrajectories.add(tmpTraj);
+                        hasPeak = true;
+                    }
+
+                    continuity = false;
+                    startSubTrajIndex = endPeakIndex;
+                }
+            }
+
+            if(hasPeak) {
+                Trajectory tmpTraj = trajectory.getSubset(endPeakIndex,trajectory.size()); //TODO: verify
+                newTrajectories.add(tmpTraj);
+
+                trajectories.remove(trajectory);
+            }
+        }
+
+        IJ.log(String.valueOf(trajectories.size()));
+        IJ.log(String.valueOf(newTrajectories.size()));
+
+        trajectories.addAll(newTrajectories);
+
+        IJ.log(String.valueOf(trajectories.size()));
+
 
         for (Trajectory trajectory : trajectories) {
             trajectory.draw();
@@ -358,6 +418,8 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         public double length_lin;
         public double length_curve;
         public boolean isAlone = false;
+        public double[] intensityDistribution;
+        public double meanIntensity=0;
 
         public Trajectory(Spot spot, int num) {
             this.num = num;
@@ -369,6 +431,12 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                 add(spot);
                 color = Color.getHSBColor((float) Math.random(), 1f, 1f);
                 color = new Color(color.getRed(), color.getGreen(), color.getBlue(), 150);
+            }
+        }
+
+        public Trajectory(List<Spot> subList) {
+            for (int i = 0; i < subList.size(); i++) {
+                this.add(subList.get(i));
             }
         }
 
@@ -414,6 +482,19 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                     this.length_curve += Math.abs(this.get(i).distance(this.get(i+1)));
                 }
             }
+        }
+
+        public double[] getIntensityDistribution(){
+            this.intensityDistribution = new double[this.size()];
+            for (int i = 0; i < this.size(); i++) {
+                this.intensityDistribution[i] = this.get(i).value;
+            }
+            this.meanIntensity = mean(this.intensityDistribution);
+            return this.intensityDistribution;
+        }
+
+        public Trajectory getSubset(int startIndex, int endIndex) {
+            return new Trajectory(this.subList(startIndex,endIndex));
         }
     }
 
@@ -467,5 +548,17 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         }
         imp.setOverlay(overlay);
         return !dlg.invalidNumber();
+    }
+
+
+    private double mean(double[] inputArray){
+        double sum = 0;
+
+        for (int i = 0; i < inputArray.length; i++) {
+            sum+=inputArray[i];
+        }
+
+        int tot = inputArray.length!=0?inputArray.length:1;
+        return sum/tot;
     }
 }
