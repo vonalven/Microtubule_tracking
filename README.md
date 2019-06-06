@@ -19,7 +19,7 @@ commons-math3-3.6.1.jar
 ### Installing
 
  - Download the **EB3T_Plugin.jar** release from [here](https://github.com/vonalven/Microtubule_tracking/releases)
- - Place it into the jars folder located into the ImageJ's *plugins* folder 
+ - Place it into a folder located into the ImageJ's *plugins* folder 
  - Restart ImageJ (or refresh menus)
  - Import a stack image and run *EB3Track Plugin*
 
