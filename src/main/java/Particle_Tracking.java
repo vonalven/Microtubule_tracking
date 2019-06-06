@@ -118,15 +118,18 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         }
         imp.setOverlay(overlay);
 
+
         ResultsTable table = new ResultsTable();
         for (Trajectory trajectory : trajectories) {
             table.incrementCounter();
             table.addValue("#", trajectory.num);
             table.addValue("length", trajectory.size());
             table.addValue("range", "(" + trajectory.start().t + " ... " + trajectory.last().t + ")");
+            table.addValue("start position", "(" + trajectory.start().x + "," + trajectory.start().y + ")");
             table.addValue("last position", "(" + trajectory.last().x + "," + trajectory.last().y + ")");
         }
         table.show("Trajectories");
+
 
         GenericDialog dlg2 = new GenericDialog("Match tracks");
         dlg2.addNumericField("Max gap [frames]", 10, 1);
@@ -167,7 +170,18 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             for (int i = 0; i < trajectories.size(); i++) {
                 Trajectory trajectory = trajectories.get(i);
 
+                IJ.log(String.valueOf(i));
+
+                if((trajectory.num == 85 || trajectory.num == 117)){
+                    //IJ.log("bend: " + bend_corrected + " dist: "+ dist_test + " radius: " + radius_max_fw);
+                    IJ.log("OK... ");
+                }
+
                 if (trajectory.isAlone) {
+                    if((trajectory.num == 85 || trajectory.num == 117)){
+                        //IJ.log("bend: " + bend_corrected + " dist: "+ dist_test + " radius: " + radius_max_fw);
+                        IJ.log("ALONE");
+                    }
                     continue;
                 }
 
@@ -175,12 +189,20 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                 trajectory.buildRegression();
 
                 if(trajectory.length_lin < 2){
+                    if((trajectory.num == 85 || trajectory.num == 117)){
+                        //IJ.log("bend: " + bend_corrected + " dist: "+ dist_test + " radius: " + radius_max_fw);
+                        IJ.log("RIMOSSO 1");
+                    }
                     trajectories.remove(trajectory);
                     i--;
                     continue;
                 }
 
                 if(trajectory.length_curve > trajectory.length_lin*1.5){
+                    if((trajectory.num == 85 || trajectory.num == 117)){
+                        //IJ.log("bend: " + bend_corrected + " dist: "+ dist_test + " radius: " + radius_max_fw);
+                        IJ.log("RIMOSSO 2 ");
+                    }
                     trajectories.remove(trajectory);
                     i--;
                     continue;
@@ -190,6 +212,12 @@ public class Particle_Tracking implements PlugIn, DialogListener {
 
                 for (Trajectory traj : trajectories) {
                     if (traj != trajectory) {
+
+
+                        if((traj.num == 85 || traj.num == 117) && (trajectory.num == 85 || trajectory.num == 117)){
+                            //IJ.log("bend: " + bend_corrected + " dist: "+ dist_test + " radius: " + radius_max_fw);
+                            IJ.log("SUKA");
+                        }
 
                         traj.buildRegression();
                         delta_t_gap = Math.abs(trajectory.last().t - traj.start().t);
@@ -239,7 +267,8 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         imp2.show();
         //overlay = new Overlay();
         for (Trajectory trajectory : trajectories) {
-            trajectory.draw();
+            trajectory.drawRegression();
+            trajectory.drawPoints();
         }
         imp2.setOverlay(overlay);
     }
@@ -269,7 +298,6 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             for (Trajectory cand_fw : candidates_fw) {
                 lateral_shift_angle = shiftAngle(ref, cand_fw, true);
                 bending_angle = bendAngle(ref, cand_fw);
-
                 dist = Math.abs(ref.last().distance(cand_fw.start()));
                 //cost_tmp_fw = Math.abs(Math.cos(bending_angle)) - Math.abs(Math.cos(lateral_shift_angle));
                 // cost_tmp_fw = Math.abs(Math.sin(bending_angle)) + Math.abs(Math.cos(lateral_shift_angle));
@@ -389,7 +417,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                         double shiftAngle = 0;
                         if (trajectory.size()>=2 && p.x != spot.x && p.y!=spot.y) {
                             trajectory.buildRegression();
-                            shiftAngle = shiftAngle(trajectory,spot,true);
+                            shiftAngle = shiftAngle(trajectory,spot,true)*unitPlateau(trajectory.size(),0.5);
                         }
 
 
@@ -458,6 +486,23 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                 line.setStrokeWidth(1);
                 overlay.add(line);
             }
+        }
+
+        public void drawPoints() {
+            for (int i = 0; i < size() - 1; i++) {
+                get(i).draw();
+            }
+        }
+
+        public void drawRegression() {
+            double ax = this.start().x;
+            double ay = this.regression.predict(this.start().x);
+            double bx = this.last().x;
+            double by = this.regression.predict(this.last().x);
+            Line line = new Line(ax, ay, bx, by);
+            line.setStrokeColor(color);
+            line.setStrokeWidth(1);
+            overlay.add(line);
         }
 
         public void buildRegression() {
@@ -549,6 +594,14 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         }
         imp.setOverlay(overlay);
         return !dlg.invalidNumber();
+    }
+
+    private double unitPlateau(double x, double a){
+        return plateau(x,a,1);
+    }
+
+    private double plateau(double x, double a, double m){
+        return m*(1-Math.exp(-a*x));
     }
 
 
