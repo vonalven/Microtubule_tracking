@@ -12,7 +12,7 @@ public class Punta_Cometa2 implements PlugIn {
 
         ImagePlus imp = IJ.getImage();
         ImagePlus imp2 = imp.duplicate();
-        
+
         if (imp == null) {
             IJ.error("No open sequence of images.");
             return;

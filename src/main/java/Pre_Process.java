@@ -28,6 +28,9 @@ public class Pre_Process implements PlugIn {
         ij.IJ.run("Sigma Filter Plus", "radius=1 use=2 minimum=0.2 outlier stack");
         ij.IJ.run("Subtract Background...", "rolling=50 sliding stack");
         ij.IJ.run("Enhance Contrast", "saturated=0.35");
-
+        ij.IJ.run("Punta Cometa2", "delta frame=7 neighbors=3");
+        ij.IJ.selectWindow("ZMaxWindow");
+        ij.IJ.run("Close");
+        ij.IJ.selectWindow("CometPoint2");
     }
 }
