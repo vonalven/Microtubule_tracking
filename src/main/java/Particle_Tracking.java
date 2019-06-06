@@ -165,10 +165,11 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                 if (!candidates_fw.isEmpty()) {
                     best_connected = bestCandidate(trajectory, candidates_fw, fw_angle, transversal_angle);
 
-                    trajectory.addAll(best_connected);
-                    trajectories.remove(best_connected);
-                    merge_event = true;
-
+                    if(best_connected!=null) {
+                        trajectory.addAll(best_connected);
+                        trajectories.remove(best_connected);
+                        merge_event = true;
+                    }
                     break outerloop;
                 } else {
                     trajectory.isAlone = true;
@@ -216,7 +217,6 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         double min_cost_fw = Double.MAX_VALUE;
         double dist;
         Trajectory best_cand_fw = null;
-        IJ.log("cost bef: " + min_cost_fw);
 
         if (!candidates_fw.isEmpty()) {
             for (Trajectory cand_fw : candidates_fw) {
@@ -232,11 +232,6 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                     best_cand_fw = cand_fw;
                 }
             }
-        }
-        IJ.log("cost aft: " + min_cost_fw);
-
-        if(best_cand_fw == null) {
-            IJ.log("NULLL");
         }
         return best_cand_fw;
     }
