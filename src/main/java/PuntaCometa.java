@@ -4,11 +4,11 @@ import ij.gui.GenericDialog;
 import ij.plugin.PlugIn;
 import ij.process.ImageProcessor;
 
-public class Punta_Cometa implements PlugIn {
+public class PuntaCometa {
 
     private int nt;
 
-    public void run(String arg) {
+    public void run(int deltaFrame,int wNeighbors) {
 
         ImagePlus imp = IJ.getImage();
         ImagePlus imp2 = imp.duplicate();
@@ -22,57 +22,47 @@ public class Punta_Cometa implements PlugIn {
             return;
         }
 
-        GenericDialog dlg = new GenericDialog("TEST");
-        dlg.addNumericField("threshold", 20, 3);
-        dlg.addNumericField("delta frame", 2, 0);
-        dlg.addNumericField("w size", 2, 0);
-        dlg.showDialog();
-        if (dlg.wasCanceled()) return;
-        double threshold = dlg.getNextNumber();
-        int deltaFrame = (int)dlg.getNextNumber();
-        int wsize = (int)dlg.getNextNumber();
-
         nt = imp.getStackSize();
         int width = imp.getWidth();
         int height = imp.getHeight();
 
-        int nOutStacks = (int)(nt-deltaFrame);
-        ImagePlus out = IJ.createHyperStack("CometPoint", width, height, 1, 1, nOutStacks, 16);
+        int nOutStacks = (nt-deltaFrame);
+        ImagePlus out = IJ.createHyperStack("CometPoint2", width, height, 1, 1, nOutStacks, 16);
         out.getProcessor().resetMinAndMax();
         out.show();
-
-        double meanBefore = 0;
-        double meanAfter  = 0;
 
         for (int t = 1; t <= nOutStacks; t++) {
 
             imp.setPosition(t);
             ImageProcessor ip1 = imp.getProcessor();
+            double max1 = ip1.getMax();
 
             imp2.setPosition(t+deltaFrame);
             ImageProcessor ip2 = imp2.getProcessor();
+            double max2 = ip2.getMax();
+
+            double normMax = (max1+max2)/2;
 
             out.setPositionWithoutUpdate(1, 1, t);
             ImageProcessor op = out.getProcessor();
 
-
-            for (int x = wsize; x < width-wsize; x++) {
-                for (int y = wsize; y < height-wsize; y++) {
-
-                    meanBefore = getMean(getNeighbors(ip1,x,y,wsize));
-                    meanAfter = getMean(getNeighbors(ip2,x,y,wsize));
-
-                    if(Math.abs(meanAfter-meanBefore)<threshold){
-                        op.putPixelValue(x, y, Math.round(meanAfter-meanBefore)/2);
-                    }else{
-                        op.putPixelValue(x, y, ip1.getPixelValue(x,y));
+            for (int x = 0; x < width; x++) {
+                for (int y = 0; y < height; y++) {
+                    double neigMean = getNeighborsMean(ip1,x,y,wNeighbors);
+                    int v = (int)(ip1.getPixelValue(x,y)*neigMean/normMax);
+                    if(v<0){
+                        v = 0;
                     }
-
+                    op.putPixelValue(x,y,v);
                 }
             }
         }
 
+        ij.IJ.run("Enhance Contrast", "saturated=0.35");
+
     }
+
+
 
     private double[][] getNeighbors(ImageProcessor ip, int px, int py,int w){
         double[][] neighbors = new double[w*2+1][w*2+1];
@@ -98,5 +88,11 @@ public class Punta_Cometa implements PlugIn {
 
         return mean/(wx*wy);
     }
+
+    private double getNeighborsMean(ImageProcessor ip, int px, int py,int w){
+        double[][] neighboars = getNeighbors(ip, px, py,w);
+        return getMean(neighboars);
+    }
+
 
 }

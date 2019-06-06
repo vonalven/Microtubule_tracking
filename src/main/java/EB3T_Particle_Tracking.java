@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Random;
 
 import ij.IJ;
-import ij.ImageJ;
 import ij.ImagePlus;
 import ij.gui.*;
 import ij.measure.ResultsTable;
@@ -16,7 +15,7 @@ import ij.process.ImageConverter;
 import ij.process.ImageProcessor;
 import org.apache.commons.math3.stat.regression.SimpleRegression;
 
-public class Particle_Tracking implements PlugIn, DialogListener {
+public class EB3T_Particle_Tracking implements PlugIn, DialogListener {
 
     private int nt;
     private ArrayList<Trajectory> trajectories = new ArrayList<Trajectory>();
@@ -151,7 +150,6 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         dlg2.addNumericField("Forward cone half-opening [degrees]", 45, 1);
         dlg2.addCheckbox("Display statistics histograms", false);
         dlg2.addNumericField("Sedentary factor (higher removes sedentary points)", 0.25, 2);
-        dlg2.addDialogListener(this);
         dlg2.showDialog();
         if (dlg2.wasCanceled()) return;
         double max_gap = dlg2.getNextNumber();
@@ -350,7 +348,6 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         dlg3.addCheckbox("Orientation scale", false);
         dlg3.addCheckbox("Linear length scale", false);
         dlg3.addCheckbox("Curved length scale", false);
-        dlg3.addDialogListener(this);
         dlg3.showDialog();
         if (dlg3.wasCanceled()) return;
         boolean velocity_colorscale = dlg3.getNextBoolean();
@@ -359,27 +356,35 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         boolean curved_length = dlg3.getNextBoolean();
 
         if(velocity_colorscale) {
-            ImagePlus imp_dup = new ImagePlus();
-            imp_dup = imp.duplicate();
+            ImagePlus imp_dupVelocity = new ImagePlus();
+            imp_dupVelocity = imp.duplicate();
+            imp_dupVelocity.setOverlay(overlay);
             drawWithColorGradient(trajectories, ArrayList_to_Array(avg_velocities_all), 100);
+            imp_dupVelocity.show();
         }
 
         if(orientation_colorscale) {
-            ImagePlus imp_dup = new ImagePlus();
-            imp_dup = imp.duplicate();
+            ImagePlus imp_dupOrientation = new ImagePlus();
+            imp_dupOrientation = imp.duplicate();
+            imp_dupOrientation.setOverlay(overlay);
             drawWithColorGradient(trajectories, ArrayList_to_Array(orientations_all), 100);
+            imp_dupOrientation.show();
         }
 
         if(lin_length) {
-            ImagePlus imp_dup = new ImagePlus();
-            imp_dup = imp.duplicate();
+            ImagePlus imp_dupLinLenght = new ImagePlus();
+            imp_dupLinLenght = imp.duplicate();
+            imp_dupLinLenght.setOverlay(overlay);
             drawWithColorGradient(trajectories, ArrayList_to_Array(linear_lengths_all), 100);
+            imp_dupLinLenght.show();
         }
 
         if(curved_length) {
-            ImagePlus imp_dup = new ImagePlus();
-            imp_dup = imp.duplicate();
+            ImagePlus imp_dupCurLenght = new ImagePlus();
+            imp_dupCurLenght = imp.duplicate();
+            imp_dupCurLenght.setOverlay(overlay);
             drawWithColorGradient(trajectories, ArrayList_to_Array(curved_lengths_all), 100);
+            imp_dupCurLenght.show();
         }
 
     }
@@ -397,7 +402,6 @@ public class Particle_Tracking implements PlugIn, DialogListener {
 
         for (int i = 0; i < nb_col; i++) {
             colors[i] = Color.getHSBColor((float) (min_col + jump * i), 1.0f, 1.0f);
-            IJ.log("col " + (float) (min_col + jump * i));
         }
 
         double[] ranges = range(getMin(statistics), getMax(statistics), nb_col);

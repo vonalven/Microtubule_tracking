@@ -1,14 +1,12 @@
 import ij.IJ;
 import ij.ImagePlus;
-import ij.gui.GenericDialog;
-import ij.plugin.PlugIn;
 import ij.process.ImageProcessor;
 
-public class Window_ZMax implements PlugIn {
+public class WindowZMax {
 
     private int nt;
 
-    public void run(String arg) {
+    public void run(double nStackProj) {
 
         ImagePlus imp = IJ.getImage();
         if (imp == null) {
@@ -19,12 +17,6 @@ public class Window_ZMax implements PlugIn {
             IJ.error("Requires a image with at least 2 frames.");
             return;
         }
-
-        GenericDialog dlg = new GenericDialog("TEST");
-        dlg.addNumericField("n stack proj", 1, 0);
-        dlg.showDialog();
-        if (dlg.wasCanceled()) return;
-        double nStackProj = dlg.getNextNumber();
 
         nt = imp.getStackSize();
         int width = imp.getWidth();
