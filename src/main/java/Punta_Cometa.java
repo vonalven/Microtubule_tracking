@@ -48,7 +48,7 @@ public class Punta_Cometa implements PlugIn {
 
             imp.setPosition(t);
             ImageProcessor ip1 = imp.getProcessor();
-            
+
             imp2.setPosition(t+deltaFrame);
             ImageProcessor ip2 = imp2.getProcessor();
 
