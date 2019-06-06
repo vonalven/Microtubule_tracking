@@ -1,5 +1,4 @@
-import java.awt.AWTEvent;
-import java.awt.Color;
+import java.awt.*;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -35,8 +34,9 @@ public class Particle_Tracking implements PlugIn, DialogListener {
 
         nt = imp.getStackSize();
         GenericDialog dlg = new GenericDialog("Particle Tracking");
-        dlg.addNumericField("Threshold", 10, 1);
-        dlg.addNumericField("Radius spot [pixel]", 3, 1);
+        dlg.addNumericField("Threshold", 0.4, 1);
+        dlg.addNumericField("Radius spot [pixel]", 2.2, 1);
+        dlg.addNumericField("Threshold buco factor", 2, 1);
         dlg.addNumericField("Velocity max [pixel/frame]", 10, 1);
         dlg.addCheckbox("Preview Detection", false);
         dlg.addDialogListener(this);
@@ -44,6 +44,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         if (dlg.wasCanceled()) return;
         double threshold = dlg.getNextNumber();
         double size = dlg.getNextNumber();
+        double thresholdHole = dlg.getNextNumber();
         double velocity = dlg.getNextNumber();
 
         for (int t = 1; t <= nt; t++) {
@@ -67,8 +68,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             Trajectory trajectory = trajectories.get(idTraj);
             double[] intensityDistribution= trajectory.getIntensityDistribution();
             for (int i = 0; i < intensityDistribution.length; i++) {
-                double thresholdIntensityDistributionFactor = 2;
-                if(intensityDistribution[i] > thresholdIntensityDistributionFactor*trajectory.meanIntensity){
+                if(intensityDistribution[i] > thresholdHole*trajectory.meanIntensity){
                     intensityDistribution[i] = -1;
                 }
             }
@@ -111,13 +111,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             }
         }
 
-        IJ.log(String.valueOf(trajectories.size()));
-        IJ.log(String.valueOf(newTrajectories.size()));
-
         trajectories.addAll(newTrajectories);
-
-        IJ.log(String.valueOf(trajectories.size()));
-
 
         for (Trajectory trajectory : trajectories) {
             trajectory.draw();
@@ -138,18 +132,12 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         dlg2.addNumericField("Max gap [frames]", 10, 1);
         dlg2.addNumericField("Min sub-track length [frames]", 3, 1);
         dlg2.addNumericField("Forward cone half-opening [degrees]", 45, 1);
-        dlg2.addNumericField("Backward cone half-opening [degrees]", 10, 1);
-        dlg2.addNumericField("Max transveral shift angle [degrees]", 20, 1);
-        dlg2.addNumericField("Backward velocity shrinkage coeff", 1.5, 2);
         dlg2.addDialogListener(this);
         dlg2.showDialog();
         if (dlg.wasCanceled()) return;
         double max_gap = dlg2.getNextNumber();
         double min_life = dlg2.getNextNumber();
         double fw_angle = dlg2.getNextNumber();
-        double bkw_angle = dlg2.getNextNumber();
-        double transversal_angle = dlg2.getNextNumber();
-        double V_shrinkage = dlg2.getNextNumber();
         ArrayList<Double> velocity_all = new ArrayList<>();
 
         for (Trajectory trajectory : trajectories) {
@@ -223,7 +211,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                 }
 
                 if (!candidates_fw.isEmpty()) {
-                    best_connected = bestCandidate(trajectory, candidates_fw, fw_angle, transversal_angle);
+                    best_connected = bestCandidate(trajectory, candidates_fw);
 
                     if(best_connected!=null) {
                         trajectory.addAll(best_connected);
@@ -269,8 +257,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
 
     // TODO: last 2 parameters never used
     private Trajectory bestCandidate(Trajectory ref,
-                                     ArrayList<Trajectory> candidates_fw,
-                                     double max_angle_fw, double max_angle_lateral) {
+                                     ArrayList<Trajectory> candidates_fw) {
         double bending_angle;
         double lateral_shift_angle;
         double cost_tmp_fw;
@@ -296,11 +283,11 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         return best_cand_fw;
     }
 
-    private double shiftAngle(Trajectory ref, Trajectory candidate, boolean isForward) {
+    private double shiftAngle(Trajectory ref, Spot p, boolean isForward) {
         double[] v1 = new double[2];
         double[] v2 = new double[2];
-        v1[0] = candidate.start().x - ref.last().x;
-        v1[1] = candidate.start().y - ref.regression.predict(ref.last().x);
+        v1[0] = p.x - ref.last().x;
+        v1[1] = p.y - ref.regression.predict(ref.last().x);
         if (isForward) {
             v2[0] = ref.last().x - ref.start().x;
             v2[1] = ref.regression.predict(ref.last().x) - ref.regression.predict(ref.start().x);
@@ -314,6 +301,11 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         v2[1] /= norm2;
 
         return Math.abs(Math.toDegrees(Math.acos(v1[0] * v2[0] + v1[1] * v2[1])));
+
+    }
+
+    private double shiftAngle(Trajectory ref, Trajectory candidate, boolean isForward) {
+        return shiftAngle(ref,candidate.start(),isForward);
 
     }
 
@@ -393,13 +385,22 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                 Spot p = trajectory.last();
                 if (p.t == spot.t - 1) {
                     if (p.matched == null) {
-                        if (spot.distance(p) < min) {
+
+                        double shiftAngle = 0;
+                        if (trajectory.size()>=2 && p.x != spot.x && p.y!=spot.y) {
+                            trajectory.buildRegression();
+                            shiftAngle = shiftAngle(trajectory,spot,true);
+                        }
+
+
+                        if (spot.distance(p) < min && shiftAngle<=90) {
                             closest = trajectory;
                             min = spot.distance(p);
                         }
                     }
                 }
             }
+
             if (!(min < velocity)) {
                 nonMatchedSpots.add(spot);
             } else {
