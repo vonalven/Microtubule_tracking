@@ -5,13 +5,7 @@ import java.util.Collections;
 
 import ij.IJ;
 import ij.ImagePlus;
-import ij.gui.DialogListener;
-import ij.gui.GenericDialog;
-import ij.gui.Line;
-import ij.gui.OvalRoi;
-import ij.gui.Overlay;
-import ij.gui.Roi;
-import ij.gui.TextRoi;
+import ij.gui.*;
 import ij.measure.ResultsTable;
 import ij.plugin.GaussianBlur3D;
 import ij.plugin.PlugIn;
@@ -98,13 +92,10 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         double V_shrinkage = dlg2.getNextNumber();
         ArrayList<Double> velocity_all = new ArrayList<>();
 
-        IJ.log(Integer.toString(222222));
-
         for (Trajectory trajectory : trajectories) {
             for (int i = 0; i < trajectory.size(); i++) {
                 if (i < trajectory.size() - 1) {
-                    // TODO: USE ABS ??
-                    velocity_all.add(trajectory.get(i).distance(trajectory.get(i + 1)));
+                    velocity_all.add(Math.abs(trajectory.get(i).distance(trajectory.get(i + 1))));
                 }
             }
         }
@@ -112,10 +103,8 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         double V_max = Percentile(velocity_all, 0.95);
         double V_med = Median(velocity_all);
         double shift_angle_fw;
-        double shift_angle_bkw;
         double bend_angle;
         double radius_max_fw;
-        double radius_max_bkw;
         double delta_t_gap;
         double dist_test;
         Trajectory best_connected;
@@ -127,64 +116,67 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             merge_event = false;
 
             outerloop:
-            //for (Trajectory trajectory : trajectories) {
-            //while(trajectories.hasNext()){
             for(int i = 0 ; i<trajectories.size(); i++){
-                IJ.log(Integer.toString(i));
                 Trajectory trajectory = trajectories.get(i);
 
+                //TODO: fare alla fine
+                /*
                 if (trajectory.size() < min_life) {
                     trajectories.remove(trajectory);
+                    i--;
                     continue;
                 }
+                 */
 
                 if (trajectory.isAlone) {
                     continue;
                 }
 
+                //TODO: da fare su ogni traiettoria PRIMA
                 trajectory.buildRegression();
 
                 ArrayList<Trajectory> candidates_fw = new ArrayList<>();
-                ArrayList<Trajectory> candidates_bkw = new ArrayList<Trajectory>();
+                ArrayList<Trajectory> candidates_bkw = new ArrayList<>();
 
                 for (Trajectory traj : trajectories) {
-                    if (traj != trajectory && traj.size() >= min_life) {
+                    if (traj != trajectory) {
 
                         traj.buildRegression();
                         delta_t_gap = Math.abs(trajectory.last().t - traj.start().t);
 
                         if (delta_t_gap < max_gap) {
 
+                            //IJ.log(trajectory.num + " D gap con " + traj.num);
+
                             shift_angle_fw = shiftAngle(trajectory, traj, true);
-                            shift_angle_bkw = shiftAngle(trajectory, traj, false);
 
                             bend_angle = bendAngle(trajectory, traj);
+                            double bend_corrected = bend_angle*Math.tanh(traj.length/max_gap);
 
                             radius_max_fw = V_max * Math.min(delta_t_gap, Math.sqrt(max_gap));
-                            radius_max_bkw = Math.min(V_shrinkage * V_max * delta_t_gap, V_med * max_gap);
 
                             // TODO: USE OR NOT ABS ??
-                            dist_test = trajectory.last().distance((traj.start()));
+                            dist_test = Math.abs(trajectory.last().distance((traj.start())));
 
-                            if (shift_angle_fw <= fw_angle && dist_test <= radius_max_fw && bend_angle <= transversal_angle) {
+                            //IJ.log("corrected angle: " + bend_corrected + ", dist: " + dist_test);
+                            //IJ.log("radiusMax: " + radius_max_fw + ", bendangle: " + bend_angle);
+
+                            if (dist_test <= radius_max_fw && bend_corrected <= fw_angle) {
+                                //IJ.log("aggiunto ai candidati");
                                 candidates_fw.add(traj);
-                            }
-                            if (shift_angle_bkw <= bkw_angle && dist_test <= radius_max_bkw && bend_angle <= transversal_angle) {
-                                candidates_bkw.add(traj);
                             }
                         }
                     }
+                }
 
-                    if (!candidates_bkw.isEmpty() || !candidates_fw.isEmpty()) {
-                        IJ.log("HELLOOOOOOO");
-                        best_connected = bestCandidate(trajectory, candidates_fw, candidates_bkw, fw_angle, bkw_angle, transversal_angle);
-                        trajectory.addAll(best_connected);
-                        trajectories.remove(best_connected);
-                        merge_event = true;
-                        break outerloop;
-                    } else {
-                        trajectory.isAlone = true;
-                    }
+                if (!candidates_fw.isEmpty()) {
+                    best_connected = bestCandidate(trajectory, candidates_fw, fw_angle, transversal_angle);
+                    trajectory.addAll(best_connected);
+                    trajectories.remove(best_connected);
+                    merge_event = true;
+                    break outerloop;
+                } else {
+                    trajectory.isAlone = true;
                 }
             }
         }
@@ -213,16 +205,13 @@ public class Particle_Tracking implements PlugIn, DialogListener {
 
     // TODO: last 3 parameters never used
     private Trajectory bestCandidate(Trajectory ref,
-                                    ArrayList<Trajectory> candidates_fw, ArrayList<Trajectory> candidates_bkw,
-                                    double max_angle_fw, double max_angle_bkw, double max_angle_lateral) {
+                                    ArrayList<Trajectory> candidates_fw,
+                                    double max_angle_fw, double max_angle_lateral) {
         double bending_angle;
         double lateral_shift_angle;
         double cost_tmp_fw;
-        double cost_tmp_bkw;
         double min_cost_fw = Double.MAX_VALUE;
-        double min_cost_bkw = Double.MAX_VALUE;
         Trajectory best_cand_fw = null;
-        Trajectory best_cand_bkw = null;
 
         if (!candidates_fw.isEmpty()) {
             for (Trajectory cand_fw : candidates_fw) {
@@ -236,23 +225,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             }
         }
 
-        if (!candidates_bkw.isEmpty()) {
-            for (Trajectory cand_bkw : candidates_bkw) {
-                lateral_shift_angle = shiftAngle(ref, cand_bkw, false);
-                bending_angle = bendAngle(ref, cand_bkw);
-                cost_tmp_bkw = Math.abs(Math.cos(bending_angle)) - Math.abs(Math.cos(lateral_shift_angle));
-                if (cost_tmp_bkw < min_cost_bkw) {
-                    min_cost_bkw = cost_tmp_bkw;
-                    best_cand_bkw = cand_bkw;
-                }
-            }
-        }
-
-        if (min_cost_fw < min_cost_bkw) {
-            return best_cand_fw;
-        } else {
-            return best_cand_bkw;
-        }
+        return best_cand_fw;
     }
 
     private double shiftAngle(Trajectory ref, Trajectory candidate, boolean isForward) {
@@ -261,11 +234,8 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         v1[0] = candidate.start().x - ref.last().x;
         v1[1] = candidate.start().y - ref.regression.predict(ref.last().x);
         if (isForward) {
-            v2[0] = 10;
-            v2[1] = ref.regression.predict(ref.last().x + 10) - ref.last().y;
-        } else {
-            v2[0] = -10;
-            v2[1] = ref.regression.predict(ref.last().x - 10) - ref.last().y;
+            v2[0] = ref.last().x-ref.start().x;
+            v2[1] = ref.regression.predict(ref.last().x) - ref.regression.predict(ref.start().x);
         }
 
         double norm1 = Math.sqrt(v1[0] * v1[0] + v1[1] * v1[1]);
@@ -377,6 +347,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         private Color color;
         private int num;
         public SimpleRegression regression;
+        public double length;
         public boolean isAlone = false;
 
         public Trajectory(Spot spot, int num) {
@@ -401,7 +372,6 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         }
 
         public void draw() {
-            // overlay.add(new TextRoi(last().x, last().y, "" + num));
             for (int i = 0; i < size() - 1; i++) {
                 Spot a = get(i);
                 Spot b = get(i + 1);
@@ -417,6 +387,13 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             for (Spot spot : this) {
                 regression.addData(spot.x, spot.y);
             }
+            trajLenght();
+        }
+
+        public void trajLenght(){
+            double dx = this.last().x - this.start().x;
+            double dy = this.regression.predict(this.last().x) - this.regression.predict(this.start().x);
+            this.length = Math.sqrt(dx*dx+dy*dy);
         }
     }
 
