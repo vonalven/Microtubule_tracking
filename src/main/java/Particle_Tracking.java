@@ -182,6 +182,12 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                     continue;
                 }
 
+                if (trajectory.isSedentary(velocity,0.25)){
+                    trajectories.remove(trajectory);
+                    i--;
+                    continue;
+                }
+
 
                 ArrayList<Trajectory> candidates_fw = new ArrayList<>();
 
@@ -513,6 +519,19 @@ public class Particle_Tracking implements PlugIn, DialogListener {
 
         public Trajectory getSubset(int startIndex, int endIndex) {
             return new Trajectory(this.subList(startIndex,endIndex));
+        }
+
+        public boolean isSedentary(double velocity,double factor){
+            double d = 0;
+            for (int i = 1; i < this.size(); i++) {
+                d += this.get(i).distance(this.get(0));
+            }
+            IJ.log("d/size: " + d + "/" + this.size() + " = " + d/this.size());
+            IJ.log("velocity: " + velocity);
+            if((d/this.size())>(velocity*factor)){
+                return false;
+            }
+            return true;
         }
     }
 
