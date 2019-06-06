@@ -2,8 +2,10 @@ import java.awt.*;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Random;
 
 import ij.IJ;
+import ij.ImageJ;
 import ij.ImagePlus;
 import ij.gui.*;
 import ij.measure.ResultsTable;
@@ -19,6 +21,8 @@ public class Particle_Tracking implements PlugIn, DialogListener {
     private int nt;
     private ArrayList<Trajectory> trajectories = new ArrayList<Trajectory>();
     private Overlay overlay = new Overlay();
+    private int nPasses = 1;                    // The number of passes (color channels * stack slices)
+    private int pass;                           // Current pass
 
     public void run(String arg) {
         ImagePlus imp = IJ.getImage();
@@ -49,11 +53,15 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         double thresholdHole = dlg.getNextNumber();
         double velocity = dlg.getNextNumber();
 
+        Thread thread = Thread.currentThread();     // needed to check for interrupted state
+        long lastTime = System.currentTimeMillis();
+
         // 1) IDENTIFY ALL THE SPOTS FRAME-BY-FRAME
         // 2) BUILD TRAJECTORIES BY SPOTS LINKING
         for (int t = 1; t <= nt; t++) {
             imp.setPosition(t);
-            ImagePlus slice = new ImagePlus("", imp.getProcessor());
+            ImageProcessor ip = imp.getProcessor();
+            ImagePlus slice = new ImagePlus("", ip);
             ImagePlus dog = DoG(slice, size);
             ArrayList<Spot> spots = localMax(dog, t, threshold);
             for (Spot spot : spots) {
@@ -62,6 +70,13 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             ArrayList<Spot> nonMatchedSpots = linkingNN(spots, velocity);
             for (Spot spot : nonMatchedSpots) {
                 trajectories.add(new Trajectory(spot, trajectories.size() + 1));
+            }
+
+            long time = System.currentTimeMillis();
+            if (time-lastTime > 100) {
+                lastTime = time;
+                if (thread.isInterrupted()) return;
+                showProgress((double) Math.round(100-((double)t/(double)nt) * 100) / 100);
             }
         }
 
@@ -134,12 +149,14 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         dlg2.addNumericField("Max gap [frames]", 10, 1);
         dlg2.addNumericField("Min sub-track length [frames]", 3, 1);
         dlg2.addNumericField("Forward cone half-opening [degrees]", 45, 1);
+        dlg2.addNumericField("Sedentary factor (higher removes sedentary points)", 0.25, 2);
         dlg2.addDialogListener(this);
         dlg2.showDialog();
         if (dlg.wasCanceled()) return;
         double max_gap = dlg2.getNextNumber();
         double min_life = dlg2.getNextNumber();
         double fw_angle = dlg2.getNextNumber();
+        double sedentaryFactor = dlg2.getNextNumber();
         ArrayList<Double> velocity_all = new ArrayList<>();
 
         // compute velocities [pixels/frame] bwtween all 2 successive points of all the identified trajectores. Store
@@ -161,6 +178,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         Trajectory best_connected;
         boolean merge_event = true;
         int lastSize = trajectories.size();
+        int counter = 0;
 
         // LINK TRAJECTORIES BY COST FUNCTION MINIMIZATION:
         // 1) IDENTIFY CANDIDATE LINKING TRAJECTORIES STARTING IN A FORWARD CONE OF HALF-APERTURE fw_angle AND A MAX
@@ -171,8 +189,17 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         // repeat until nb. of trajectories (after linking) doesn't change
         while (merge_event) {
 
+            long time = System.currentTimeMillis();
+            if (time-lastTime > 100) {
+                lastTime = time;
+                if (thread.isInterrupted()) return;
+                showProgress((double) Math.round(100-((double)counter/(double)trajectories.size()) * 100) / 100);
+            }
+            counter = 0; //just for the progress bar
+
             outerloop:
             for (int i = 0; i < trajectories.size(); i++) {
+                counter++;
                 Trajectory trajectory = trajectories.get(i);
 
                 if (trajectory.isAlone) {
@@ -191,12 +218,13 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                     continue;
                 }
 
-                if (trajectory.isSedentary(velocity,0.25)){
+                // If the Trajectory doesn't move a lot in the space is considered as sedentary.
+                // Each sedentary trajectory will be removed.
+                if (trajectory.isSedentary(velocity, sedentaryFactor)) {
                     trajectories.remove(trajectory);
                     i--;
                     continue;
                 }
-
 
                 ArrayList<Trajectory> candidates_fw = new ArrayList<>();
 
@@ -471,7 +499,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         public double length_curve;             // "curved" length of the Trajectory
         public boolean isAlone = false;         // True if the Trajectory is not linked to any other Trajectory
         public double[] intensityDistribution;  // intensity distribution at the Spots locations
-        public double meanIntensity = 0;          // average intensity of intensityDistribution
+        public double meanIntensity = 0;        // average intensity of intensityDistribution
 
         // constructor
         public Trajectory(Spot spot, int num) {
@@ -482,8 +510,12 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                 color = spot.daughterOf.color;
             } else {
                 add(spot);
-                color = Color.getHSBColor((float) Math.random(), 1f, 1f);
-                color = new Color(color.getRed(), color.getGreen(), color.getBlue(), 60);
+                Random rand = new Random();
+                // Java 'Color' class takes 3 floats, from 0 to 1.
+                float r = rand.nextFloat();
+                float g = rand.nextFloat();
+                float b = rand.nextFloat();
+                color = new Color(r, g, b, (float) 0.6);
             }
         }
 
@@ -584,14 +616,12 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             return new Trajectory(this.subList(startIndex, endIndex));
         }
 
-        public boolean isSedentary(double velocity,double factor){
+        public boolean isSedentary(double velocity, double factor) {
             double d = 0;
             for (int i = 1; i < this.size(); i++) {
                 d += this.get(i).distance(this.get(0));
             }
-            IJ.log("d/size: " + d + "/" + this.size() + " = " + d/this.size());
-            IJ.log("velocity: " + velocity);
-            if((d/this.size())>(velocity*factor)){
+            if ((d / this.size()) > (velocity * factor)) {
                 return false;
             }
             return true;
@@ -678,5 +708,18 @@ public class Particle_Tracking implements PlugIn, DialogListener {
 
         int tot = inputArray.length != 0 ? inputArray.length : 1;
         return sum / tot;
+    }
+
+
+    /** This method is called by ImageJ to set the number of calls to run(ip)
+     *  corresponding to 100% of the progress bar */
+    public void setNPasses (int nPasses) {
+        this.nPasses = nPasses;
+        pass = 0;
+    }
+
+    private void showProgress(double percent) {
+        percent = (double)(pass-1)/nPasses + percent/nPasses;
+        IJ.showProgress(percent);
     }
 }
