@@ -140,6 +140,10 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         double max_gap = dlg2.getNextNumber();
         double min_life = dlg2.getNextNumber();
         double fw_angle = dlg2.getNextNumber();
+
+
+        // TODO
+        /*
         ArrayList<Double> velocity_all = new ArrayList<>();
 
         // compute velocities [pixels/frame] bwtween all 2 successive points of all the identified trajectores. Store
@@ -151,6 +155,9 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                 }
             }
         }
+
+         */
+        ArrayList<Double> velocity_all = getVelocities(trajectories);
 
         double V_max = Percentile(velocity_all, 0.95);
         double V_med = Median(velocity_all);
@@ -265,6 +272,65 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             table.addValue("last position", "(" + trajectory.last().x + "," + trajectory.last().y + ")");
         }
         table.show("Trajectories");
+
+        // TODO
+        // COMPUTE STATISTICS:
+        ArrayList<Double> velocities_all = getVelocities(trajectories);
+        ArrayList<Double> orientations_all = getOrientations(trajectories);
+        ArrayList<Double> linear_lengths_all = getLinearLengths(trajectories);
+        ArrayList<Double> curved_lengths_all = getCurvedLengths(trajectories);
+    }
+
+    // TODO
+    // compute velocities [pixels/frame] bwtween all 2 successive points of all the identified trajectores. Store
+    // them all in an unique array. Returns the array of velocities
+    private ArrayList<Double> getVelocities(ArrayList<Trajectory> trajectories){
+        ArrayList<Double> velocity_all = new ArrayList<>();
+
+        for (Trajectory trajectory : trajectories) {
+            for (int i = 0; i < trajectory.size(); i++) {
+                if (i < trajectory.size() - 1) {
+                    velocity_all.add(Math.abs(trajectory.get(i).distance(trajectory.get(i + 1))));
+                }
+            }
+        }
+        return velocity_all;
+    }
+
+    // TODO
+    // computes the orientations of all the trajectories in the input ArrayList. The orientations (angle) are computes
+    // as atan(slope), where slope is given by the linear model attribute of each Trajectory
+    private ArrayList<Double> getOrientations(ArrayList<Trajectory> trajectories){
+        ArrayList<Double> orientation_all = new ArrayList<>();
+
+        for (Trajectory trajectory : trajectories) {
+            orientation_all.add(Math.toDegrees(Math.atan(trajectory.regression.getSlope())));
+        }
+        return orientation_all;
+    }
+
+    // TODO
+    // returns all the linear lengths of the trajectories in the input ArrayList. Those lengths are stored
+    // as Trajectory class attributes
+    private ArrayList<Double> getLinearLengths(ArrayList<Trajectory> trajectories){
+        ArrayList<Double> linear_lengths_all = new ArrayList<>();
+
+        for (Trajectory trajectory : trajectories) {
+            linear_lengths_all.add(trajectory.length_lin);
+        }
+        return linear_lengths_all;
+    }
+
+    // TODO
+    // returns all the curved lengths of the trajectories in the input ArrayList. Those lengths are stored
+    // as Trajectory class attributes
+    private ArrayList<Double> getCurvedLengths(ArrayList<Trajectory> trajectories){
+        ArrayList<Double> curved_lengths_all = new ArrayList<>();
+
+        for (Trajectory trajectory : trajectories) {
+            curved_lengths_all.add(trajectory.length_curve);
+        }
+        return curved_lengths_all;
     }
 
     // return the element located at the percentile (<= 1) quantile of an input ArrayList
