@@ -39,10 +39,10 @@ Next steps require parameters the following parameters to be specified.
 
 ### Clustering - Parameters
 
- * *Max gap* - 
- * *Min sub-track length* - 
- * *Forward cone half-opening* - 
- * *Sedentary factor* - 
+ * *Max gap* - defines the maximum gap in frames that can exist between the end and the start of 2 trajectories to be connected
+ * *Min sub-track length* - defines the minimal length in terms of frames that a trajectory need to have. Otherwise it is discarded
+ * *Forward cone half-opening* - defines the half-angle of the forward searching cone. The cone start from the last point of a reference trajectory; if some starting point of other trajectories is inside this cone, the corresponding trajectory is considered as a potential candidate for linking to the reference trajectory.
+ * *Sedentary factor* - defines the sedentarity threshold of trajectories. If it is high, sedentary trajectories are discared, if it is zero, any trajectory is discarded by sedentarity. By sedentarity it is intended the spatial mouvement range covered by a trajectory during its life [in all the frames where it is defined].
 
 
 
