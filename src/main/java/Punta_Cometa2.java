@@ -22,9 +22,11 @@ public class Punta_Cometa2 implements PlugIn {
 
         GenericDialog dlg = new GenericDialog("TEST");
         dlg.addNumericField("delta frame", 5, 0);
+        dlg.addNumericField("neighbors", 2, 0);
         dlg.showDialog();
         if (dlg.wasCanceled()) return;
         int deltaFrame = (int)dlg.getNextNumber();
+        int wNeighbors = (int)dlg.getNextNumber();
 
         nt = imp.getStackSize();
         int width = imp.getWidth();
@@ -39,18 +41,23 @@ public class Punta_Cometa2 implements PlugIn {
 
             imp.setPosition(t);
             ImageProcessor ip1 = imp.getProcessor();
+            double max1 = ip1.getMax();
 
             ImagePlus imp2 = imp.duplicate();
 
             imp2.setPosition(t+deltaFrame);
             ImageProcessor ip2 = imp2.getProcessor();
+            double max2 = ip2.getMax();
+
+            double normMax = (max1+max2)/2;
 
             out.setPositionWithoutUpdate(1, 1, t);
             ImageProcessor op = out.getProcessor();
 
             for (int x = 0; x < width; x++) {
                 for (int y = 0; y < height; y++) {
-                    int v = (int)(ip1.getPixelValue(x,y)-ip2.getPixelValue(x,y));
+                    double neigMean = getNeighborsMean(ip1,x,y,wNeighbors);
+                    int v = (int)(ip1.getPixelValue(x,y)*neigMean/normMax);
                     if(v<0){
                         v = 0;
                     }
@@ -59,6 +66,41 @@ public class Punta_Cometa2 implements PlugIn {
             }
         }
 
+        ij.IJ.run("Enhance Contrast", "saturated=0.35");
+
     }
+
+
+
+    private double[][] getNeighbors(ImageProcessor ip, int px, int py,int w){
+        double[][] neighbors = new double[w*2+1][w*2+1];
+        for (int x = px-w; x < px+w; x++) {
+            for (int y = py-w; y < py+w; y++) {
+                neighbors[x-px+w][y-py+w] = ip.getPixelValue(x,y);
+            }
+        }
+        return neighbors;
+    }
+
+    private double getMean(double[][] inputArray){
+        int wx = inputArray.length;
+        int wy = inputArray[0].length;
+
+        double mean = 0;
+
+        for (int i = 0; i < wx; i++) {
+            for (int j = 0; j < wy; j++) {
+                mean+=inputArray[i][j];
+            }
+        }
+
+        return mean/(wx*wy);
+    }
+
+    private double getNeighborsMean(ImageProcessor ip, int px, int py,int w){
+        double[][] neighboars = getNeighbors(ip, px, py,w);
+        return getMean(neighboars);
+    }
+
 
 }
