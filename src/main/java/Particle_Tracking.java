@@ -33,10 +33,12 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         imp.setOverlay(overlay);
 
         nt = imp.getStackSize();
+
+        // generate a dialog box to set the parameters for spots detection and trajectories creation
         GenericDialog dlg = new GenericDialog("Particle Tracking");
         dlg.addNumericField("Threshold", 0.4, 1);
         dlg.addNumericField("Radius spot [pixel]", 2.2, 1);
-        dlg.addNumericField("Threshold buco factor", 2, 1);
+        dlg.addNumericField("Overlap intensity threshold (Holes threshold)", 2, 1);
         dlg.addNumericField("Velocity max [pixel/frame]", 10, 1);
         dlg.addCheckbox("Preview Detection", false);
         dlg.addDialogListener(this);
@@ -47,6 +49,8 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         double thresholdHole = dlg.getNextNumber();
         double velocity = dlg.getNextNumber();
 
+        // 1) IDENTIFY ALL THE SPOTS FRAME-BY-FRAME
+        // 2) BUILD TRAJECTORIES BY SPOTS LINKING
         for (int t = 1; t <= nt; t++) {
             imp.setPosition(t);
             ImagePlus slice = new ImagePlus("", imp.getProcessor());
@@ -64,35 +68,41 @@ public class Particle_Tracking implements PlugIn, DialogListener {
 
         ArrayList<Trajectory> newTrajectories = new ArrayList<>();
 
+        // IF 2 TRAJECTORIES INTERSECATE, DETACH THE IDENTIFIED TRAJECTORIES IN THE CROSSING ZONE, THEY WILL BE BETTER
+        // CONNECTED LATER. CROSSING IS IDENTIFIED BY A SHIFT-UP IN FLUORESCENCE INTENSITY
+        // 1) IDENTIFY ALL THE SHIFT-UP IN INTENSITIES COMPARED TO THE AVERAGE INTENSITY OF THE TRAJECTORIES
+        // 2) APPLY thresholdHole THRESHOLD TO IDENTIFY OVERLAP INTENSITIES PEAKS
+        // 3) CUT THE TRAJECTORY IN THE IDENTIFIED CORSSING POINTS
+        // 4) INSERT THE NEW TRAJECTORIES IN ALL THE TRAJECTORIES COLLECTION
         for (int idTraj = 0; idTraj < trajectories.size(); idTraj++) {
             Trajectory trajectory = trajectories.get(idTraj);
-            double[] intensityDistribution= trajectory.getIntensityDistribution();
+            double[] intensityDistribution = trajectory.getIntensityDistribution();
             for (int i = 0; i < intensityDistribution.length; i++) {
-                if(intensityDistribution[i] > thresholdHole*trajectory.meanIntensity){
+                if (intensityDistribution[i] > thresholdHole * trajectory.meanIntensity) {
                     intensityDistribution[i] = -1;
                 }
             }
 
             int startPeakIndex = 0;
-            int endPeakIndex   = 0;
+            int endPeakIndex = 0;
             int startSubTrajIndex = 0;
             boolean continuity = false;
             boolean hasPeak = false;
 
             for (int i = 0; i < intensityDistribution.length; i++) {
-                if(intensityDistribution[i] == -1 && !continuity){
+                if (intensityDistribution[i] == -1 && !continuity) {
                     startPeakIndex = i;
-                    endPeakIndex   = i;
+                    endPeakIndex = i;
                     continuity = true;
                     continue;
                 }
-                if(intensityDistribution[i] == -1 && continuity){
+                if (intensityDistribution[i] == -1 && continuity) {
                     endPeakIndex = i;
                     continue;
                 }
 
-                if(continuity && !(startPeakIndex == endPeakIndex)) {
-                    if(startPeakIndex!=0) {
+                if (continuity && !(startPeakIndex == endPeakIndex)) {
+                    if (startPeakIndex != 0) {
                         Trajectory tmpTraj = trajectory.getSubset(startSubTrajIndex, startPeakIndex); //TODO: verify
                         newTrajectories.add(tmpTraj);
                         hasPeak = true;
@@ -103,34 +113,23 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                 }
             }
 
-            if(hasPeak) {
-                Trajectory tmpTraj = trajectory.getSubset(endPeakIndex,trajectory.size()); //TODO: verify
+            if (hasPeak) {
+                Trajectory tmpTraj = trajectory.getSubset(endPeakIndex, trajectory.size()); //TODO: verify
                 newTrajectories.add(tmpTraj);
 
                 trajectories.remove(trajectory);
             }
         }
-
         trajectories.addAll(newTrajectories);
 
+        // draw the identified trajectories before linking. If the linking is performed this draw is replaced by the
+        // linked trajectories
         for (Trajectory trajectory : trajectories) {
             trajectory.draw();
         }
         imp.setOverlay(overlay);
 
-
-        ResultsTable table = new ResultsTable();
-        for (Trajectory trajectory : trajectories) {
-            table.incrementCounter();
-            table.addValue("#", trajectory.num);
-            table.addValue("length", trajectory.size());
-            table.addValue("range", "(" + trajectory.start().t + " ... " + trajectory.last().t + ")");
-            table.addValue("start position", "(" + trajectory.start().x + "," + trajectory.start().y + ")");
-            table.addValue("last position", "(" + trajectory.last().x + "," + trajectory.last().y + ")");
-        }
-        table.show("Trajectories");
-
-
+        // generate a dialog box to set the parameters for trajectories linking
         GenericDialog dlg2 = new GenericDialog("Match tracks");
         dlg2.addNumericField("Max gap [frames]", 10, 1);
         dlg2.addNumericField("Min sub-track length [frames]", 3, 1);
@@ -143,6 +142,8 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         double fw_angle = dlg2.getNextNumber();
         ArrayList<Double> velocity_all = new ArrayList<>();
 
+        // compute velocities [pixels/frame] bwtween all 2 successive points of all the identified trajectores. Store
+        // them all in an unique array
         for (Trajectory trajectory : trajectories) {
             for (int i = 0; i < trajectory.size(); i++) {
                 if (i < trajectory.size() - 1) {
@@ -153,7 +154,6 @@ public class Particle_Tracking implements PlugIn, DialogListener {
 
         double V_max = Percentile(velocity_all, 0.95);
         double V_med = Median(velocity_all);
-        double shift_angle_fw;
         double bend_angle;
         double radius_max_fw;
         double delta_t_gap;
@@ -161,6 +161,12 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         Trajectory best_connected;
         boolean merge_event = true;
         int lastSize = trajectories.size();
+
+        // LINK TRAJECTORIES BY COST FUNCTION MINIMIZATION:
+        // 1) IDENTIFY CANDIDATE LINKING TRAJECTORIES STARTING IN A FORWARD CONE OF HALF-APERTURE fw_angle AND A MAX
+        //    RADIUS radius_max_fw = V_max * min(delta_t_gap, sqrt(max_gap))
+        // 2) EXTRACT THE BEST CANDIDATE BY MINIMIZATION OF A COST FUNCTION
+        // 3) LINK THE 2 TRAJECTORIES, REMOVE THE INDIVIDUAL BEST CANDIDATE FROM THE SET OF ALL TRAJECTORIES
 
         // repeat until nb. of trajectories (after linking) doesn't change
         while (merge_event) {
@@ -174,9 +180,12 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                 }
 
                 //TODO: da fare su ogni traiettoria PRIMA
+                // build linear regression model of each Trajectory
                 trajectory.buildRegression();
 
-                if(trajectory.length_lin < 2){
+                // if the Trajectory is present on less than 2 frames, erase it (impossible to calculate bending and
+                // lateral shift angles and an accurate linear regression model)
+                if (trajectory.length_lin < 2) {
                     trajectories.remove(trajectory);
                     i--;
                     continue;
@@ -210,7 +219,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                 if (!candidates_fw.isEmpty()) {
                     best_connected = bestCandidate(trajectory, candidates_fw);
 
-                    if(best_connected!=null) {
+                    if (best_connected != null) {
                         trajectory.addAll(best_connected);
                         trajectories.remove(best_connected);
                         i--;
@@ -220,21 +229,22 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                 }
             }
 
-            if(lastSize == trajectories.size()){
+            if (lastSize == trajectories.size()) {
                 merge_event = false;
             }
             lastSize = trajectories.size();
         }
 
+        // remove trajectories shorter than min_life
         for (int i = 0; i < trajectories.size(); i++) {
             Trajectory trajectory = trajectories.get(i);
-            if(trajectory.size() < min_life){
+            if (trajectory.size() < min_life) {
                 trajectories.remove(trajectory);
                 i--;
             }
         }
 
-
+        // display the trajectories
         ImagePlus imp2 = new ImagePlus();
         imp2 = imp.duplicate();
         imp2.show();
@@ -243,20 +253,37 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             trajectory.draw();
         }
         imp2.setOverlay(overlay);
+
+        // display the trajectories statistics in an imagej table
+        ResultsTable table = new ResultsTable();
+        for (Trajectory trajectory : trajectories) {
+            table.incrementCounter();
+            table.addValue("#", trajectory.num);
+            table.addValue("length", trajectory.size());
+            table.addValue("range", "(" + trajectory.start().t + " ... " + trajectory.last().t + ")");
+            table.addValue("start position", "(" + trajectory.start().x + "," + trajectory.start().y + ")");
+            table.addValue("last position", "(" + trajectory.last().x + "," + trajectory.last().y + ")");
+        }
+        table.show("Trajectories");
     }
 
+    // return the element located at the percentile (<= 1) quantile of an input ArrayList
     private double Percentile(ArrayList<Double> ll, double percentile) {
         Collections.sort(ll);
         int index_percentile = (int) (Math.ceil(ll.size() * percentile));
         return ll.get(index_percentile);
     }
 
+    // returns the median element of an input ArrayList
     private double Median(ArrayList<Double> ll) {
         int index_median = (int) (Math.ceil(ll.size() * 0.5));
         return ll.get(index_median);
     }
 
-    // TODO: last 2 parameters never used
+    // determines the best candidate linking to the reference Trajectory ref among a list of candidate Trajectories
+    // (candidates_fw). The selection is based on the minimization of a cost function (cost_tmp_fw) considering the
+    // lateral shift distance, the forward distance and the bending angle between the end and the begin of the old and
+    // new candidate Trajectory
     private Trajectory bestCandidate(Trajectory ref,
                                      ArrayList<Trajectory> candidates_fw) {
         double bending_angle;
@@ -273,7 +300,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                 dist = Math.abs(ref.last().distance(cand_fw.start()));
                 //cost_tmp_fw = Math.abs(Math.cos(bending_angle)) - Math.abs(Math.cos(lateral_shift_angle));
                 // cost_tmp_fw = Math.abs(Math.sin(bending_angle)) + Math.abs(Math.cos(lateral_shift_angle));
-                cost_tmp_fw = Math.abs(dist*Math.sin(bending_angle)) + dist*Math.abs(Math.cos(lateral_shift_angle)) + (1-Math.cos(bending_angle));
+                cost_tmp_fw = Math.abs(dist * Math.sin(bending_angle)) + dist * Math.abs(Math.cos(lateral_shift_angle)) + (1 - Math.cos(bending_angle));
                 if (cost_tmp_fw < min_cost_fw) {
                     min_cost_fw = cost_tmp_fw;
                     best_cand_fw = cand_fw;
@@ -283,6 +310,12 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         return best_cand_fw;
     }
 
+    // computes the lateral shift angle between a reference Trajectory (ref) and a Spot (p). This angle corresponds to
+    // the angle between the linear regression line of ref and the vector traced from the end of this regression to the
+    // Spot p. It is equivalent to the half.angle of a cone with vertex lying on the "end of the linear regression" of
+    // ref, with the outer aplitude-bonds defined by the Spot p.
+    // isForward is an experimental parameter that was used to predict if the cone is oriented in the same growth
+    // direction of ref or in the opposite direction (backward)
     private double shiftAngle(Trajectory ref, Spot p, boolean isForward) {
         double[] v1 = new double[2];
         double[] v2 = new double[2];
@@ -304,11 +337,16 @@ public class Particle_Tracking implements PlugIn, DialogListener {
 
     }
 
+    // override of shiftAngle. The angle is computed between the last spot of ref and the first spot of candidate
+    // by calling the first shiftAngle method
     private double shiftAngle(Trajectory ref, Trajectory candidate, boolean isForward) {
-        return shiftAngle(ref,candidate.start(),isForward);
+        return shiftAngle(ref, candidate.start(), isForward);
 
     }
 
+    // computes the bending angle between 2 Trajectory objects (ref = reference trajectory and candidate). This angle is
+    // the angle between the 2 intersecating linear regression models specified as attributes in the Trajectory
+    // objects
     private double bendAngle(Trajectory ref, Trajectory candidate) {
 
         double[] v1 = new double[2];
@@ -327,9 +365,10 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         v2[1] /= norm2;
 
         return Math.abs(Math.toDegrees(Math.acos(v1[0] * v2[0] + v1[1] * v2[1])));
-
     }
 
+    // applies a Difference of Gaussians (DoG) filter on the input image in. The x and y sizes of the 2 gaussian sigmas
+    // are respectively size and size * sqrt(2)
     public ImagePlus DoG(ImagePlus in, double size) {
         ImagePlus g1 = in.duplicate();
         ImagePlus g2 = in.duplicate();
@@ -344,6 +383,9 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         return g1;
     }
 
+    // computes the local maximum based on 8-connected morphology of an input image (imp) using a grayscale threshold.
+    // The found maxima are used to initialize an array of Spots.
+    // t = frame of the imp processed image
     public ArrayList<Spot> localMax(ImagePlus imp, int t, double threshold) {
         int nx = imp.getWidth();
         int ny = imp.getHeight();
@@ -376,6 +418,9 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         return list;
     }
 
+    // links the detected Spots into trajectories by distance minimization. Link occurs if the minimal distance is
+    // smaller than the velocity parameter and if the spot is in front of the growing closest trajectory. Otherwise the
+    // spot is added in a nonMatchedSpots array
     public ArrayList<Spot> linkingNN(ArrayList<Spot> spots, double velocity) {
         ArrayList<Spot> nonMatchedSpots = new ArrayList<Spot>();
         for (Spot spot : spots) {
@@ -387,13 +432,13 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                     if (p.matched == null) {
 
                         double shiftAngle = 0;
-                        if (trajectory.size()>=2 && p.x != spot.x && p.y!=spot.y) {
+                        if (trajectory.size() >= 2 && p.x != spot.x && p.y != spot.y) {
                             trajectory.buildRegression();
-                            shiftAngle = shiftAngle(trajectory,spot,true)*unitPlateau(trajectory.size(),0.5);
+                            shiftAngle = shiftAngle(trajectory, spot, true) * unitPlateau(trajectory.size(), 0.5);
                         }
 
 
-                        if (spot.distance(p) < min && shiftAngle<=90) {
+                        if (spot.distance(p) < min && shiftAngle <= 90) {
                             closest = trajectory;
                             min = spot.distance(p);
                         }
@@ -413,15 +458,16 @@ public class Particle_Tracking implements PlugIn, DialogListener {
 
     public class Trajectory extends ArrayList<Spot> {
 
-        private Color color;
-        private int num;
-        public SimpleRegression regression;
-        public double length_lin;
-        public double length_curve;
-        public boolean isAlone = false;
-        public double[] intensityDistribution;
-        public double meanIntensity=0;
+        private Color color;                    // color instance used by draw()
+        private int num;                        // indentifier for the Trajectory number
+        public SimpleRegression regression;     // linear regression model fitting the Spots of the Trajectory
+        public double length_lin;               // "linar" length of the Trajectory
+        public double length_curve;             // "curved" length of the Trajectory
+        public boolean isAlone = false;         // True if the Trajectory is not linked to any other Trajectory
+        public double[] intensityDistribution;  // intensity distribution at the Spots locations
+        public double meanIntensity = 0;          // average intensity of intensityDistribution
 
+        // constructor
         public Trajectory(Spot spot, int num) {
             this.num = num;
             if (spot.daughterOf != null) {
@@ -435,20 +481,24 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             }
         }
 
+        // constructor
         public Trajectory(List<Spot> subList) {
             for (int i = 0; i < subList.size(); i++) {
                 this.add(subList.get(i));
             }
         }
 
+        // returns the last Spot of the Trajectory
         public Spot last() {
             return get(this.size() - 1);
         }
 
+        // returns the first Spot of the Trajectory
         public Spot start() {
             return get(0);
         }
 
+        // draws all the points of the Trajectory and links them with lines
         public void draw() {
             for (int i = 0; i < size() - 1; i++) {
                 Spot a = get(i);
@@ -460,12 +510,14 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             }
         }
 
+        // draws all the Spots of the Trajectory
         public void drawPoints() {
             for (int i = 0; i < size() - 1; i++) {
                 get(i).draw();
             }
         }
 
+        // draws the interpolated linear regression between the start and the end of the Trajectory
         public void drawRegression() {
             double ax = this.start().x;
             double ay = this.regression.predict(this.start().x);
@@ -477,6 +529,9 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             overlay.add(line);
         }
 
+        // computes a linear regression model fitting the Spots of the trajectory. Initializes the regression class
+        // attribute
+        // initializes the trajLenght_linear and the trajLength_curve class attributes
         public void buildRegression() {
             regression = new SimpleRegression();
             for (Spot spot : this) {
@@ -486,6 +541,8 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             trajLength_curve();
         }
 
+        // computes the "linear" Trajectory length as a linear distance between the end and the start Spots evaluated in
+        // the interpolated linear regression. Initializes the length_lin class attribute.
         public void trajLenght_linear() {
             this.length_lin = 0;
             double dx = this.last().x - this.start().x;
@@ -493,16 +550,21 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             this.length_lin = Math.sqrt(dx * dx + dy * dy);
         }
 
-        public void trajLength_curve(){
+        // computes the "curved" Trajectory length as sum of distances between all the Spots. Initializes the
+        // length_curve class attribute.
+        public void trajLength_curve() {
             this.length_curve = 0;
-            for (int i = 0; i<this.size(); i++) {
-                if (i<this.size()-1){
-                    this.length_curve += Math.abs(this.get(i).distance(this.get(i+1)));
+            for (int i = 0; i < this.size(); i++) {
+                if (i < this.size() - 1) {
+                    this.length_curve += Math.abs(this.get(i).distance(this.get(i + 1)));
                 }
             }
         }
 
-        public double[] getIntensityDistribution(){
+        // returns an array with the grayscale intensity of all the Spots in the Trajectory
+        // initializes the intensityDistribution class attribute
+        // computes the mean intensity of the intensityDistribution array
+        public double[] getIntensityDistribution() {
             this.intensityDistribution = new double[this.size()];
             for (int i = 0; i < this.size(); i++) {
                 this.intensityDistribution[i] = this.get(i).value;
@@ -511,20 +573,22 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             return this.intensityDistribution;
         }
 
+        // gets a subset of Spots from the current Trajectory
         public Trajectory getSubset(int startIndex, int endIndex) {
-            return new Trajectory(this.subList(startIndex,endIndex));
+            return new Trajectory(this.subList(startIndex, endIndex));
         }
     }
 
     public class Spot {
 
-        public int x;
-        public int y;
-        public int t;
-        public double value;
-        public Spot matched;
-        public Trajectory daughterOf;
+        public int x;                   // x-coordinate of the Spot
+        public int y;                   // y-coordinate of the Spot
+        public int t;                   // frame at which the Spot is located
+        public double value;            // grayscale intensity value of the input image at the Spot location
+        public Spot matched;            // True if the Spot is linked to a trajectory
+        public Trajectory daughterOf;   // trajectory linked to the Spot
 
+        // constructor
         public Spot(int x, int y, int t, double value) {
             this.x = x;
             this.y = y;
@@ -532,12 +596,14 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             this.value = value;
         }
 
+        // computes distance from current (.this) Spot and a second input spot
         public double distance(Spot spot) {
             double dx = x - spot.x;
             double dy = y - spot.y;
             return Math.sqrt(dx * dx + dy * dy);
         }
 
+        // draw circles on Spot coordinates
         public void draw() {
             double xp = x + 0.5;
             double yp = y + 0.5;
@@ -550,6 +616,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         }
     }
 
+    // displays a preview of the spots detected by DoG
     @Override
     public boolean dialogItemChanged(GenericDialog dlg, AWTEvent event) {
         double threshold = dlg.getNextNumber();
@@ -568,23 +635,29 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         return !dlg.invalidNumber();
     }
 
-    private double unitPlateau(double x, double a){
-        return plateau(x,a,1);
+    // exponential function used to scale values. f(x)=(1-e^(-a*x))
+    // the plateu is reached at y = 1
+    // a is the dilation factor
+    private double unitPlateau(double x, double a) {
+        return plateau(x, a, 1);
     }
 
-    private double plateau(double x, double a, double m){
-        return m*(1-Math.exp(-a*x));
+    // exponential function used to scale values. f(x)=m*(1-e^(-a*x))
+    // m is the plateau height (y_plateau = m)
+    // a is a dilation factor
+    private double plateau(double x, double a, double m) {
+        return m * (1 - Math.exp(-a * x));
     }
 
-
-    private double mean(double[] inputArray){
+    // computes average of an input array
+    private double mean(double[] inputArray) {
         double sum = 0;
 
         for (int i = 0; i < inputArray.length; i++) {
-            sum+=inputArray[i];
+            sum += inputArray[i];
         }
 
-        int tot = inputArray.length!=0?inputArray.length:1;
-        return sum/tot;
+        int tot = inputArray.length != 0 ? inputArray.length : 1;
+        return sum / tot;
     }
 }
