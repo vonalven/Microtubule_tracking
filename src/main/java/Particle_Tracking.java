@@ -134,12 +134,14 @@ public class Particle_Tracking implements PlugIn, DialogListener {
         dlg2.addNumericField("Max gap [frames]", 10, 1);
         dlg2.addNumericField("Min sub-track length [frames]", 3, 1);
         dlg2.addNumericField("Forward cone half-opening [degrees]", 45, 1);
+        dlg2.addCheckbox("Display statistics histograms", false);
         dlg2.addDialogListener(this);
         dlg2.showDialog();
-        if (dlg.wasCanceled()) return;
+        if (dlg2.wasCanceled()) return;
         double max_gap = dlg2.getNextNumber();
         double min_life = dlg2.getNextNumber();
         double fw_angle = dlg2.getNextNumber();
+        boolean displayHisto = dlg2.getNextBoolean();
 
 
         // TODO
@@ -198,7 +200,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
                     continue;
                 }
 
-                if (trajectory.isSedentary(velocity,0.25)){
+                if (trajectory.isSedentary(velocity, 0.25)) {
                     trajectories.remove(trajectory);
                     i--;
                     continue;
@@ -281,16 +283,195 @@ public class Particle_Tracking implements PlugIn, DialogListener {
 
         // TODO
         // COMPUTE STATISTICS:
+        ArrayList<Double> avg_velocities_all = getAvgVelocities(trajectories);
         ArrayList<Double> velocities_all = getVelocities(trajectories);
         ArrayList<Double> orientations_all = getOrientations(trajectories);
         ArrayList<Double> linear_lengths_all = getLinearLengths(trajectories);
         ArrayList<Double> curved_lengths_all = getCurvedLengths(trajectories);
+
+        if (displayHisto) {
+            Plot plot0 = new Plot("Average Velocity", "Average speed between spots for all trajectories [ pixels / frame ]", "Counts");
+            double[] avg_V_arr = ArrayList_to_Array(avg_velocities_all);
+            plot0.setColor(Color.red);
+            plot0.setLineWidth(2);
+            plot0.addHistogram(avg_V_arr);
+            plot0.setLimitsToFit(true);
+            plot0.show();
+
+            Plot plot1 = new Plot("Velocity", "speed between spots [ pixels / frame ]", "Counts");
+            double[] V_arr = ArrayList_to_Array(velocities_all);
+            plot1.setColor(Color.red);
+            plot1.setLineWidth(2);
+            plot1.addHistogram(V_arr);
+            plot1.setLimitsToFit(true);
+            plot1.show();
+
+            Plot plot2 = new Plot("Orientation", "Orientation angle between horizon and trajectories linear model [ degrees ]", "Counts");
+            double[] or_arr = ArrayList_to_Array(orientations_all);
+            plot2.setColor(Color.red);
+            plot2.setLineWidth(2);
+            plot2.addHistogram(or_arr);
+            plot2.setLimitsToFit(true);
+            plot2.show();
+
+            Plot plot3 = new Plot("Linear Length", "Linear Length [ pixels ]", "Counts");
+            double[] lin_len_arr = ArrayList_to_Array(linear_lengths_all);
+            plot3.setColor(Color.red);
+            plot3.setLineWidth(2);
+            plot3.addHistogram(lin_len_arr);
+            plot3.setLimitsToFit(true);
+            plot3.show();
+
+            Plot plot4 = new Plot("Curved Length", "Curved Length [ pixels ]", "Counts");
+            double[] curv_len_arr = ArrayList_to_Array(curved_lengths_all);
+            plot4.setColor(Color.red);
+            plot4.setLineWidth(2);
+            plot4.addHistogram(curv_len_arr);
+            plot4.setLimitsToFit(true);
+            plot4.setColor(Color.red);
+            plot4.show();
+        }
+
+        GenericDialog dlg3 = new GenericDialog("Colorcale Plot");
+        dlg3.addCheckbox("Avg velocity scale", false);
+        dlg3.addCheckbox("Orientation scale", false);
+        dlg3.addCheckbox("Linear length scale", false);
+        dlg3.addCheckbox("Curved length scale", false);
+        dlg3.addDialogListener(this);
+        dlg3.showDialog();
+        if (dlg3.wasCanceled()) return;
+        boolean velocity_colorscale = dlg3.getNextBoolean();
+        boolean orientation_colorscale = dlg3.getNextBoolean();
+        boolean lin_length = dlg3.getNextBoolean();
+        boolean curved_length = dlg3.getNextBoolean();
+
+        if(velocity_colorscale) {
+            ImagePlus imp_dup = new ImagePlus();
+            imp_dup = imp.duplicate();
+            drawWithColorGradient(trajectories, ArrayList_to_Array(avg_velocities_all), 100);
+        }
+
+        if(orientation_colorscale) {
+            ImagePlus imp_dup = new ImagePlus();
+            imp_dup = imp.duplicate();
+            drawWithColorGradient(trajectories, ArrayList_to_Array(orientations_all), 100);
+        }
+
+        if(lin_length) {
+            ImagePlus imp_dup = new ImagePlus();
+            imp_dup = imp.duplicate();
+            drawWithColorGradient(trajectories, ArrayList_to_Array(linear_lengths_all), 100);
+        }
+
+        if(curved_length) {
+            ImagePlus imp_dup = new ImagePlus();
+            imp_dup = imp.duplicate();
+            drawWithColorGradient(trajectories, ArrayList_to_Array(curved_lengths_all), 100);
+        }
+
+    }
+
+    private void drawWithColorGradient(ArrayList<Trajectory> trajectories, double[] statistics, int nb_colors) {
+        int nb_col = nb_colors;
+        if (nb_col < statistics.length) {
+            nb_col = statistics.length;
+        }
+
+        Color[] colors = new Color[nb_col];
+        double min_col = 0.0/360.0;
+        double max_col = 120.0/360.0;
+        double jump = (max_col - min_col) / (double) (nb_col);
+
+        for (int i = 0; i < nb_col; i++) {
+            colors[i] = Color.getHSBColor((float) (min_col + jump * i), 1.0f, 1.0f);
+            IJ.log("col " + (float) (min_col + jump * i));
+        }
+
+        double[] ranges = range(getMin(statistics), getMax(statistics), nb_col);
+
+        for (int j = 0; j<trajectories.size(); j++) {
+            Trajectory traj = trajectories.get(j);
+            loop_in:
+            for (int i = 0; i < nb_col; i++) {
+                if (i < nb_col - 2) {
+                    if (statistics[j] >= ranges[i] && statistics[j] < ranges[i + 1]) {
+                        traj.draw(colors[i]);
+                        break loop_in;
+                    }
+                } else {
+                    if (statistics[j] == ranges[i]) {
+                        traj.draw(colors[nb_col - 1]);
+                    }
+                }
+            }
+        }
+    }
+
+    private double[] range(double min, double max, int nb_elements) {
+
+        double[] arr = new double[nb_elements];
+        double step = (max - min) / nb_elements;
+        arr[0] = min;
+        for (int i = 1; i < nb_elements - 1; i++) {
+            arr[i] = arr[i - 1] + step;
+        }
+        arr[nb_elements - 1] = max;
+
+        return arr;
+    }
+
+    public static double getMax(double[] inputArray) {
+        double maxValue = inputArray[0];
+        for (int i = 1; i < inputArray.length; i++) {
+            if (inputArray[i] > maxValue) {
+                maxValue = inputArray[i];
+            }
+        }
+        return maxValue;
+    }
+
+    public static double getMin(double[] inputArray) {
+        double minValue = inputArray[0];
+        for (int i = 1; i < inputArray.length; i++) {
+            if (inputArray[i] < minValue) {
+                minValue = inputArray[i];
+            }
+        }
+        return minValue;
+    }
+
+    // converts an ArrayList of Double to an array of double
+    private double[] ArrayList_to_Array(ArrayList<Double> in) {
+        double[] out = new double[in.size()];
+
+        for (int i = 0; i < in.size(); i++) {
+            out[i] = in.get(i);
+        }
+
+        return out;
+    }
+
+
+    private ArrayList<Double> getAvgVelocities(ArrayList<Trajectory> trajectories) {
+        ArrayList<Double> avg_velocity_all = new ArrayList<>();
+
+        double avg = 0;
+        for (Trajectory trajectory : trajectories) {
+            avg = 0;
+            for (int i = 0; i < trajectory.size(); i++) {
+                if (i < trajectory.size() - 1) {
+                    avg += Math.abs(trajectory.get(i).distance(trajectory.get(i + 1)));
+                }
+            }
+            avg_velocity_all.add(avg / (trajectory.size() - 1));
+        }
+        return avg_velocity_all;
     }
 
     // TODO
     // compute velocities [pixels/frame] bwtween all 2 successive points of all the identified trajectores. Store
     // them all in an unique array. Returns the array of velocities
-    private ArrayList<Double> getVelocities(ArrayList<Trajectory> trajectories){
+    private ArrayList<Double> getVelocities(ArrayList<Trajectory> trajectories) {
         ArrayList<Double> velocity_all = new ArrayList<>();
 
         for (Trajectory trajectory : trajectories) {
@@ -306,7 +487,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
     // TODO
     // computes the orientations of all the trajectories in the input ArrayList. The orientations (angle) are computes
     // as atan(slope), where slope is given by the linear model attribute of each Trajectory
-    private ArrayList<Double> getOrientations(ArrayList<Trajectory> trajectories){
+    private ArrayList<Double> getOrientations(ArrayList<Trajectory> trajectories) {
         ArrayList<Double> orientation_all = new ArrayList<>();
 
         for (Trajectory trajectory : trajectories) {
@@ -318,7 +499,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
     // TODO
     // returns all the linear lengths of the trajectories in the input ArrayList. Those lengths are stored
     // as Trajectory class attributes
-    private ArrayList<Double> getLinearLengths(ArrayList<Trajectory> trajectories){
+    private ArrayList<Double> getLinearLengths(ArrayList<Trajectory> trajectories) {
         ArrayList<Double> linear_lengths_all = new ArrayList<>();
 
         for (Trajectory trajectory : trajectories) {
@@ -330,7 +511,7 @@ public class Particle_Tracking implements PlugIn, DialogListener {
     // TODO
     // returns all the curved lengths of the trajectories in the input ArrayList. Those lengths are stored
     // as Trajectory class attributes
-    private ArrayList<Double> getCurvedLengths(ArrayList<Trajectory> trajectories){
+    private ArrayList<Double> getCurvedLengths(ArrayList<Trajectory> trajectories) {
         ArrayList<Double> curved_lengths_all = new ArrayList<>();
 
         for (Trajectory trajectory : trajectories) {
@@ -582,6 +763,18 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             }
         }
 
+        // override of draw where a specific color can be specified
+        public void draw(Color specific_color) {
+            for (int i = 0; i < size() - 1; i++) {
+                Spot a = get(i);
+                Spot b = get(i + 1);
+                Line line = new Line(a.x + 0.5, a.y + 0.5, b.x + 0.5, b.y + 0.5);
+                line.setStrokeColor(specific_color);
+                line.setStrokeWidth(1);
+                overlay.add(line);
+            }
+        }
+
         // draws all the Spots of the Trajectory
         public void drawPoints() {
             for (int i = 0; i < size() - 1; i++) {
@@ -650,14 +843,13 @@ public class Particle_Tracking implements PlugIn, DialogListener {
             return new Trajectory(this.subList(startIndex, endIndex));
         }
 
-        public boolean isSedentary(double velocity,double factor){
+        public boolean isSedentary(double velocity, double factor) {
             double d = 0;
             for (int i = 1; i < this.size(); i++) {
                 d += this.get(i).distance(this.get(0));
             }
-            IJ.log("d/size: " + d + "/" + this.size() + " = " + d/this.size());
-            IJ.log("velocity: " + velocity);
-            if((d/this.size())>(velocity*factor)){
+
+            if ((d / this.size()) > (velocity * factor)) {
                 return false;
             }
             return true;
