@@ -11,6 +11,8 @@ public class Punta_Cometa implements PlugIn {
     public void run(String arg) {
 
         ImagePlus imp = IJ.getImage();
+        ImagePlus imp2 = imp.duplicate();
+
         if (imp == null) {
             IJ.error("No open sequence of images.");
             return;
@@ -46,9 +48,7 @@ public class Punta_Cometa implements PlugIn {
 
             imp.setPosition(t);
             ImageProcessor ip1 = imp.getProcessor();
-
-            ImagePlus imp2 = imp.duplicate();
-
+            
             imp2.setPosition(t+deltaFrame);
             ImageProcessor ip2 = imp2.getProcessor();
 
