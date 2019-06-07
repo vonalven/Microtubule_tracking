@@ -63,9 +63,6 @@ public class EB3T_Particle_Tracking implements PlugIn, DialogListener {
             ImagePlus slice = new ImagePlus("", ip);
             ImagePlus dog = DoG(slice, size);
             ArrayList<Spot> spots = localMax(dog, t, threshold);
-            for (Spot spot : spots) {
-                spot.draw();
-            }
             ArrayList<Spot> nonMatchedSpots = linkingNN(spots, velocity);
             for (Spot spot : nonMatchedSpots) {
                 trajectories.add(new Trajectory(spot, trajectories.size() + 1));
